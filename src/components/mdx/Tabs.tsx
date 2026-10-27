@@ -1,7 +1,7 @@
 'use client';
 
 import { Children, isValidElement, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 
 /**
  * WAI-ARIA tabs (automatic activation): roving tabindex, ←/→ to move, Home/End to jump.
@@ -52,7 +52,7 @@ export function Tabs({ labels, children, title }: { labels: string[]; children: 
             aria-controls={`${id}-panel-${i}`}
             tabIndex={i === active ? 0 : -1}
             onClick={() => setActive(i)}
-            className={cn(
+            className={cx(
               '-mb-px whitespace-nowrap rounded-t-md border-b-2 px-3.5 py-2 text-sm font-medium transition-colors',
               i === active ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg',
             )}

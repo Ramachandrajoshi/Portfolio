@@ -2,7 +2,7 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { CONTACT_TOPICS, isLikelyBot, submitContact, validateContact, type ContactErrors, type ContactInput } from '@/lib/contact';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 
 type Status = { state: 'idle' } | { state: 'submitting' } | { state: 'success' } | { state: 'error'; message: string };
 
@@ -101,7 +101,7 @@ export function ContactForm({ endpoint }: { endpoint: string }) {
         </select>
       </Field>
       <Field id="message" label="Message" hint="At least 20 characters. Please don't include confidential information." error={errors.message}>
-        <textarea id="contact-message" name="message" required rows={7} maxLength={5000} {...aria('message', errors, true)} className={cn(inputClass(errors.message), 'h-auto py-2.5')} />
+        <textarea id="contact-message" name="message" required rows={7} maxLength={5000} {...aria('message', errors, true)} className={cx(inputClass(errors.message), 'h-auto py-2.5')} />
       </Field>
 
       {/* Honeypot — visually hidden and removed from the accessibility tree and tab order. */}
@@ -138,7 +138,7 @@ function aria(field: keyof ContactErrors, errors: ContactErrors, hasHint = false
 }
 
 function inputClass(error?: string) {
-  return cn(
+  return cx(
     'block h-11 w-full rounded-md border bg-surface px-3 text-base text-fg placeholder:text-subtle',
     error ? 'border-danger' : 'border-border-strong focus:border-accent',
   );

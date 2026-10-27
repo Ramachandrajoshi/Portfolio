@@ -8,6 +8,7 @@ import { CloseIcon, MenuIcon } from '@/components/ui/icons';
 import { ThemeToggle } from './ThemeToggle';
 import { ClassicModeToggle } from './ClassicModeToggle';
 import { isActive } from './NavLinks';
+import { enter } from '@/lib/motion';
 
 /**
  * Slide-over menu built on the native modal <dialog>: the browser provides the top layer,
@@ -27,6 +28,7 @@ export function MobileNav({ items }: { items: NavItem[] }) {
     const dialog = dialogRef.current;
     if (!dialog) return;
     dialog.showModal();
+    enter(dialog, 'right', 0.24);
     document.documentElement.style.overflow = 'hidden';
   };
 

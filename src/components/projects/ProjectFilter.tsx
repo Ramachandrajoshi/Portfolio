@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 
 /**
  * Progressive category filter: the full project list is server-rendered (and stays fully
@@ -24,7 +24,7 @@ export function ProjectFilter({ categories, listId }: { categories: { id: string
           type="button"
           aria-pressed={active === c.id}
           onClick={() => setActive(c.id)}
-          className={cn(
+          className={cx(
             'rounded-full border px-3 py-1 text-sm',
             active === c.id ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:border-accent hover:text-accent',
           )}

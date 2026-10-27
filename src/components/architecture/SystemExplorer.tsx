@@ -17,7 +17,7 @@ import {
 } from '@xyflow/react';
 import Link from 'next/link';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 import { kindMeta, modeLabel, type AdrSummary, type ExplorerEdge, type ExplorerModel, type ExplorerNode } from './types';
 
 type NodeData = { node: ExplorerNode; state: 'idle' | 'selected' | 'related' | 'dimmed' };
@@ -31,7 +31,7 @@ const SystemNodeView = memo(function SystemNodeView({ data }: NodeProps<SystemNo
   const meta = kindMeta[data.node.kind];
   return (
     <div
-      className={cn(
+      className={cx(
         'rounded-lg border bg-surface px-3 py-2.5 text-left shadow-sm transition-[opacity,border-color,box-shadow] duration-200',
         data.state === 'selected' && 'border-accent shadow-glow',
         data.state === 'related' && 'border-accent/60',

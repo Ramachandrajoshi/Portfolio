@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 
 export interface TocItem {
   title: string;
@@ -64,7 +64,7 @@ function TocLink({ item, active, nested = false }: { item: TocItem; active: stri
     <a
       href={item.url}
       aria-current={isActive ? 'location' : undefined}
-      className={cn(
+      className={cx(
         '-ml-px block border-l py-1 pr-2 leading-snug transition-colors',
         nested ? 'pl-6 text-[0.8rem]' : 'pl-3',
         isActive ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg',

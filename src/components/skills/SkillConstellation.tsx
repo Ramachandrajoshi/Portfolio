@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 import type { SkillWithEvidence } from './evidence';
 
 interface Category {
@@ -72,7 +72,7 @@ export function SkillConstellation({ skills, categories }: { skills: SkillWithEv
                 type="button"
                 aria-pressed={filter === c.id}
                 onClick={() => setFilter(c.id)}
-                className={cn('rounded-full border px-2.5 py-1 text-xs', filter === c.id ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-fg')}
+                className={cx('rounded-full border px-2.5 py-1 text-xs', filter === c.id ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-fg')}
               >
                 {c.label}
               </button>

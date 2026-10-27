@@ -355,3 +355,43 @@ pre [data-highlighted-line] {
 .react-flow__pane {
   cursor: grab;
 }
+
+/* Hero poster palette (isometric city), themed with the rest of the tokens. */
+:root {
+  --poster-sky-top: #dfe8f5;
+  --poster-sky-bottom: #f5f7fb;
+  --poster-ground: #e6edf6;
+  --poster-line: #0e7490;
+  --poster-top: #ffffff;
+  --poster-rim: #67b8cc;
+  --poster-side: #e2e8f0;
+  --poster-side-dark: #cbd5e1;
+  --poster-window: #1d4ed8;
+  --poster-window-alt: #0e7490;
+}
+:root[data-theme='dark'] {
+  --poster-sky-top: #070b16;
+  --poster-sky-bottom: #101b38;
+  --poster-ground: #0a1124;
+  --poster-line: #22d3ee;
+  --poster-top: #1a2540;
+  --poster-rim: #22d3ee;
+  --poster-side: #121b2e;
+  --poster-side-dark: #0c1323;
+  --poster-window: #f5b544;
+  --poster-window-alt: #67e8f9;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --poster-sky-top: #070b16;
+    --poster-sky-bottom: #101b38;
+    --poster-ground: #0a1124;
+    --poster-line: #22d3ee;
+    --poster-top: #1a2540;
+    --poster-rim: #22d3ee;
+    --poster-side: #121b2e;
+    --poster-side-dark: #0c1323;
+    --poster-window: #f5b544;
+    --poster-window-alt: #67e8f9;
+  }
+}
