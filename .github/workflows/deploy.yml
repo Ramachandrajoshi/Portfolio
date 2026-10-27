@@ -51,7 +51,7 @@ jobs:
           E2E_SITE_URL: http://localhost:4173${{ steps.pages.outputs.base_path }}
           NEXT_PUBLIC_SITE_URL: ${{ steps.pages.outputs.base_url }}
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: out
 
