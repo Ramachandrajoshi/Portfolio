@@ -78,14 +78,18 @@ export default async function ProjectPage({ params }: { params: Promise<Params> 
             <p className="eyebrow">Technologies</p>
             <ul className="mt-3 flex flex-wrap gap-2">
               {project.technologies.map((t) => (
-                <li key={t} className="rounded-md border border-border bg-surface-2 px-2 py-1 font-mono text-xs">{t}</li>
+                <li key={t} className="rounded-md border border-border bg-surface-2 px-2 py-1 font-mono text-xs">
+                  {t}
+                </li>
               ))}
             </ul>
           </div>
           {related ? (
             <div className="card p-5">
               <p className="eyebrow">Related case study</p>
-              <Link href={related.url} className="mt-2 block text-sm hover:text-accent">{related.title}</Link>
+              <Link href={related.url} className="mt-2 block text-sm hover:text-accent">
+                {related.title}
+              </Link>
             </div>
           ) : null}
         </aside>

@@ -1,0 +1,31 @@
+id: IOT-ADR-003
+title: Stateful alarm engine with hysteresis and de-duplication, fed from the event stream
+status: accepted
+date: 2026-09-15
+caseStudy: industrial-telemetry-platform
+context: >-
+  Naive threshold alarms on noisy signals flap — raising and clearing many times a minute — which trains
+  operators to ignore them. Alarms must also survive engine restarts without re-notifying.
+decision: >-
+  A dedicated alarm engine consumes the accepted-readings stream, keeps per-tag state (active, acknowledged,
+  shelved), applies deadbands, minimum durations and hysteresis, and persists state changes as events.
+  Notifications are emitted only on state transitions and are idempotent per alarm instance.
+alternatives:
+  - option: Threshold checks in the database (triggers or scheduled queries)
+    summary: Evaluate rules where the data lands.
+    rejectedBecause: Couples alarm latency to write batching and query load; triggers on hypertables are costly.
+  - option: Alarms computed in the edge gateway only
+    summary: Evaluate rules on site.
+    rejectedBecause: >-
+      Useful for safety-critical local interlocks, but cross-asset rules and central rule governance need
+      the cloud view. Edge alarming remains an optional complement.
+consequences:
+  positive:
+    - Far fewer nuisance alarms; transitions are meaningful.
+    - 'Restart-safe: state is rebuilt from persisted events.'
+  negative:
+    - The engine is stateful and must be partitioned carefully (by tenant and asset) to scale.
+risks:
+  - Rule misconfiguration can suppress real alarms; rule changes are versioned and reviewed.
+followUps:
+  - Alarm-rate dashboards per site to detect flapping rules (ISA-18.2-style metrics).

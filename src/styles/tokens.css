@@ -25,6 +25,7 @@
   --cyan-300: #67e8f9;
   --cyan-400: #22d3ee;
   --cyan-700: #0e7490;
+  --cyan-800: #0b6580;
   --blue-400: #60a5fa;
   --blue-500: #3b82f6;
   --blue-700: #1d4ed8;
@@ -32,10 +33,12 @@
   --violet-700: #6d28d9;
   --amber-400: #f5b544;
   --amber-700: #b45309;
+  --amber-800: #92400e;
   --red-400: #f87171;
   --red-700: #b91c1c;
   --green-400: #4ade80;
   --green-700: #15803d;
+  --green-800: #166534;
 
   /* ── Typography ──────────────────────────────────────────── */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -105,15 +108,17 @@
   --color-text: #0b1220;
   --color-text-muted: #45526b;
   --color-text-subtle: #5d6a82;
-  --color-accent: var(--cyan-700);
+  /* Light-theme accents are one step darker than the brand swatches so text stays ≥ 4.5:1
+     even on the 10 % tinted chip and badge backgrounds (verified in tests/unit/tokens.test.ts). */
+  --color-accent: var(--cyan-800);
   --color-accent-strong: #155e75;
   --color-accent-contrast: #ffffff;
   --color-secondary: var(--blue-700);
   --color-tertiary: var(--violet-700);
-  --color-highlight: var(--amber-700);
+  --color-highlight: var(--amber-800);
   --color-info: var(--blue-700);
-  --color-success: var(--green-700);
-  --color-warning: var(--amber-700);
+  --color-success: var(--green-800);
+  --color-warning: var(--amber-800);
   --color-danger: var(--red-700);
   --color-grid: rgb(14 116 144 / 0.08);
   --color-glow: rgb(14 116 144 / 0.18);

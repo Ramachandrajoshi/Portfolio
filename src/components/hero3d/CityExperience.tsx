@@ -21,7 +21,6 @@ import {
   nearestLandmark,
   SPAWN,
   stepCharacter,
-  WORLD,
   type CharacterState,
   type LandmarkId,
 } from './world';
@@ -66,8 +65,8 @@ function Simulation({
       dt,
       colliders,
     );
-    const { landmark, distance } = nearestLandmark(character.current.x, character.current.z);
-    const id = distance < WORLD.interactRadius ? landmark.id : null;
+    const { landmark, inRange } = nearestLandmark(character.current.x, character.current.z);
+    const id = inRange ? landmark.id : null;
     if (id !== last.current) {
       last.current = id;
       onNearest(id);

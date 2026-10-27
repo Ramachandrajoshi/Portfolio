@@ -17,10 +17,12 @@ export function Hero() {
   return (
     <HeroStage poster={<HeroPoster />}>
       <p className="eyebrow">Ram&apos;s Digital Metropolis</p>
-      <h1 className="mt-4 font-display text-[length:var(--text-5xl)] font-semibold leading-[1.02]">{profile.name}</h1>
+      <h1 className="mt-4 font-display text-[length:var(--text-5xl)] leading-[1.02] font-semibold">{profile.name}</h1>
       <p className="mt-3 font-display text-2xl text-accent">{profile.title}</p>
       <p className="mt-5 text-lg leading-relaxed text-muted">{profile.positioning}</p>
-      <p className="mt-6 text-sm text-muted">Explore the city — every district is a part of my work — or go straight to:</p>
+      <p className="mt-6 text-sm text-muted">
+        Explore the city — every district is a part of my work — or go straight to:
+      </p>
       <nav aria-label="Primary actions" className="mt-3">
         <ul className="flex flex-wrap gap-2">
           {actions.map((a) => (

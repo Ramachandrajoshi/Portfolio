@@ -50,12 +50,25 @@ function Label({ text, sub, color, y }: { text: string; sub: string; color: stri
 }
 
 function emissive(color: string, intensity = 2) {
-  return new THREE.MeshStandardMaterial({ color: '#0b1120', emissive: color, emissiveIntensity: intensity, roughness: 0.4, metalness: 0.2, toneMapped: false });
+  return new THREE.MeshStandardMaterial({
+    color: '#0b1120',
+    emissive: color,
+    emissiveIntensity: intensity,
+    roughness: 0.4,
+    metalness: 0.2,
+    toneMapped: false,
+  });
 }
 
 /** Facade material for landmark shells: lighter than the city so landmarks read as landmarks. */
 function shellMaterial(palette: ScenePalette, accent: string) {
-  return new THREE.MeshStandardMaterial({ color: palette.buildingB, emissive: accent, emissiveIntensity: 0.08, roughness: 0.35, metalness: 0.55 });
+  return new THREE.MeshStandardMaterial({
+    color: palette.buildingB,
+    emissive: accent,
+    emissiveIntensity: 0.08,
+    roughness: 0.35,
+    metalness: 0.55,
+  });
 }
 
 /** Soft additive halo sprite — the cheap stand-in for bloom. */
@@ -75,7 +88,15 @@ function Halo({ color, size, y = 0, opacity = 0.55 }: { color: string; size: num
   useLayoutEffect(() => () => texture.dispose(), [texture]);
   return (
     <sprite position={[0, y, 0]} scale={[size, size, 1]}>
-      <spriteMaterial map={texture} color={color} transparent opacity={opacity} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+      <spriteMaterial
+        map={texture}
+        color={color}
+        transparent
+        opacity={opacity}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+        toneMapped={false}
+      />
     </sprite>
   );
 }
@@ -171,7 +192,13 @@ function ComputeCore({ landmark, palette, animate, active }: LandmarkProps) {
       </mesh>
       <instancedMesh ref={racks} args={[undefined, undefined, rackPositions.length]}>
         <boxGeometry args={[1.6, 5.6, 0.9]} />
-        <meshStandardMaterial color={palette.buildingA} emissive={landmark.color} emissiveIntensity={0.35} roughness={0.4} metalness={0.6} />
+        <meshStandardMaterial
+          color={palette.buildingA}
+          emissive={landmark.color}
+          emissiveIntensity={0.35}
+          roughness={0.4}
+          metalness={0.6}
+        />
       </instancedMesh>
       <mesh ref={core} position={[0, 7.5, 0]} material={glow}>
         <icosahedronGeometry args={[1.8, 1]} />
@@ -312,7 +339,13 @@ function Workshop({ landmark, palette, animate, active }: LandmarkProps) {
         {[-3, 0, 3].map((x, i) => (
           <mesh key={x} position={[x, 6.5 + i * 1.7, -1 + i]} rotation={[0, -0.3 + i * 0.3, 0]}>
             <planeGeometry args={[3.2, 2]} />
-            <meshBasicMaterial map={codeTexture} transparent opacity={0.92} side={THREE.DoubleSide} toneMapped={false} />
+            <meshBasicMaterial
+              map={codeTexture}
+              transparent
+              opacity={0.92}
+              side={THREE.DoubleSide}
+              toneMapped={false}
+            />
           </mesh>
         ))}
       </group>
@@ -330,7 +363,9 @@ function ProfileBeacon({ landmark, palette, animate, active }: LandmarkProps) {
     if (!animate) return;
     time.current += dt;
     if (ring.current) ring.current.rotation.z += dt * 0.4;
-    if (beam.current) (beam.current.material as THREE.MeshBasicMaterial).opacity = (active ? 0.32 : 0.18) + Math.sin(time.current * 2) * 0.05;
+    if (beam.current)
+      (beam.current.material as THREE.MeshBasicMaterial).opacity =
+        (active ? 0.32 : 0.18) + Math.sin(time.current * 2) * 0.05;
   });
   return (
     <group>
@@ -351,7 +386,14 @@ function ProfileBeacon({ landmark, palette, animate, active }: LandmarkProps) {
       </mesh>
       <mesh ref={beam} position={[0, 30, 0]}>
         <cylinderGeometry args={[0.35, 0.9, 60, 16, 1, true]} />
-        <meshBasicMaterial color={palette.visor} transparent opacity={0.2} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
+        <meshBasicMaterial
+          color={palette.visor}
+          transparent
+          opacity={0.2}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+          toneMapped={false}
+        />
       </mesh>
       <Label text={landmark.name} sub={landmark.district} color={palette.visor} y={12.5} />
     </group>
@@ -393,7 +435,13 @@ export function Landmarks({
             onPointerOut={() => (document.body.style.cursor = '')}
           >
             <Component landmark={l} palette={palette} animate={animate} active={activeId === l.id} />
-            <pointLight position={[0, 6, 0]} color={l.color} intensity={activeId === l.id ? 22 : 10} distance={24} decay={1.6} />
+            <pointLight
+              position={[0, 6, 0]}
+              color={l.color}
+              intensity={activeId === l.id ? 22 : 10}
+              distance={24}
+              decay={1.6}
+            />
           </group>
         );
       })}

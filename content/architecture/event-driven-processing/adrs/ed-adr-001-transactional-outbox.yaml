@@ -1,0 +1,34 @@
+id: ED-ADR-001
+title: Publish domain events through a transactional outbox
+status: accepted
+date: 2026-10-08
+caseStudy: event-driven-processing
+context: >-
+  The order service must change its state and announce the change. The database write and the broker
+  publish are separate systems; doing one after the other loses events (crash between them) or announces
+  changes that never committed (publish before commit).
+decision: >-
+  Write the event to an outbox table in the same database transaction as the state change. A relay
+  publishes outbox rows in commit order per aggregate and marks them published. Delivery is therefore
+  at-least-once: a crash after publishing but before marking causes a re-publish.
+alternatives:
+  - option: Publish after commit in application code
+    summary: Commit, then call the broker.
+    rejectedBecause: A crash or broker outage between the two silently loses the event.
+  - option: Two-phase commit across database and broker
+    summary: Distributed transaction.
+    rejectedBecause: Poor broker support, couples availability of both systems, operationally fragile.
+  - option: Event sourcing as the system of record
+    summary: Store events only and derive state.
+    rejectedBecause: Larger conceptual change than the problem requires; the team's reporting depends on relational state.
+consequences:
+  positive:
+    - No lost events and no phantom events — state and event commit atomically.
+    - The broker can be unavailable without blocking order writes.
+  negative:
+    - Consumers must tolerate duplicates (see ED-ADR-002).
+    - Outbox table and relay to operate; outbox age becomes a key health metric.
+risks:
+  - Relay lag during broker outages delays every consumer; alert on oldest unpublished row.
+followUps:
+  - Evaluate logical-decoding-based capture (CDC) to replace polling when volume grows.

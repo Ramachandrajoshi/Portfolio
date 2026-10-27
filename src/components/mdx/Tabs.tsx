@@ -20,11 +20,19 @@ export function Tabs({ labels, children, title }: { labels: string[]; children: 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const last = labels.length - 1;
     const next =
-      event.key === 'ArrowRight' ? (active === last ? 0 : active + 1)
-      : event.key === 'ArrowLeft' ? (active === 0 ? last : active - 1)
-      : event.key === 'Home' ? 0
-      : event.key === 'End' ? last
-      : null;
+      event.key === 'ArrowRight'
+        ? active === last
+          ? 0
+          : active + 1
+        : event.key === 'ArrowLeft'
+          ? active === 0
+            ? last
+            : active - 1
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? last
+              : null;
     if (next === null) return;
     event.preventDefault();
     setActive(next);
@@ -53,7 +61,7 @@ export function Tabs({ labels, children, title }: { labels: string[]; children: 
             tabIndex={i === active ? 0 : -1}
             onClick={() => setActive(i)}
             className={cx(
-              '-mb-px whitespace-nowrap rounded-t-md border-b-2 px-3.5 py-2 text-sm font-medium transition-colors',
+              '-mb-px rounded-t-md border-b-2 px-3.5 py-2 text-sm font-medium whitespace-nowrap transition-colors',
               i === active ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg',
             )}
           >
@@ -69,7 +77,7 @@ export function Tabs({ labels, children, title }: { labels: string[]; children: 
           aria-labelledby={`${id}-tab-${i}`}
           hidden={i !== active}
           tabIndex={0}
-          className="p-4 sm:p-5 [&>:first-child]:mt-0 [&>*+*]:mt-4"
+          className="p-4 sm:p-5 [&>*+*]:mt-4 [&>:first-child]:mt-0"
         >
           {panel}
         </div>

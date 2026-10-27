@@ -1,7 +1,14 @@
 'use client';
 
 import { useRef, useState, type FormEvent } from 'react';
-import { CONTACT_TOPICS, isLikelyBot, submitContact, validateContact, type ContactErrors, type ContactInput } from '@/lib/contact';
+import {
+  CONTACT_TOPICS,
+  isLikelyBot,
+  submitContact,
+  validateContact,
+  type ContactErrors,
+  type ContactInput,
+} from '@/lib/contact';
 import { cx } from '@/lib/cx';
 
 type Status = { state: 'idle' } | { state: 'submitting' } | { state: 'success' } | { state: 'error'; message: string };
@@ -61,7 +68,13 @@ export function ContactForm({ endpoint }: { endpoint: string }) {
 
   if (status.state === 'success') {
     return (
-      <div role="status" className="card border-success/50 p-6" data-testid="contact-success" tabIndex={-1} ref={(el) => el?.focus()}>
+      <div
+        role="status"
+        className="card border-success/50 p-6"
+        data-testid="contact-success"
+        tabIndex={-1}
+        ref={(el) => el?.focus()}
+      >
         <p className="font-display text-xl font-semibold text-success">Message sent — thank you.</p>
         <p className="mt-2 text-muted">I read every message and usually reply within a few working days.</p>
         <button type="button" className="link mt-4 text-sm" onClick={() => setStatus({ state: 'idle' })}>
@@ -72,14 +85,33 @@ export function ContactForm({ endpoint }: { endpoint: string }) {
   }
 
   return (
-    <form ref={formRef} action={endpoint} method="POST" noValidate onSubmit={onSubmit} className="space-y-5" data-testid="contact-form" aria-describedby="contact-privacy">
+    <form
+      ref={formRef}
+      action={endpoint}
+      method="POST"
+      noValidate
+      onSubmit={onSubmit}
+      className="space-y-5"
+      data-testid="contact-form"
+      aria-describedby="contact-privacy"
+    >
       {errorList.length ? (
-        <div ref={summaryRef} tabIndex={-1} role="alert" className="rounded-md border border-danger/50 bg-danger/10 p-4 text-sm" data-testid="contact-error-summary">
-          <p className="font-semibold text-danger">Please fix {errorList.length === 1 ? 'this problem' : `these ${errorList.length} problems`}:</p>
+        <div
+          ref={summaryRef}
+          tabIndex={-1}
+          role="alert"
+          className="rounded-md border border-danger/50 bg-danger/10 p-4 text-sm"
+          data-testid="contact-error-summary"
+        >
+          <p className="font-semibold text-danger">
+            Please fix {errorList.length === 1 ? 'this problem' : `these ${errorList.length} problems`}:
+          </p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             {errorList.map((f) => (
               <li key={f}>
-                <a href={`#contact-${f}`} className="underline">{labels[f]}: {errors[f]}</a>
+                <a href={`#contact-${f}`} className="underline">
+                  {labels[f]}: {errors[f]}
+                </a>
               </li>
             ))}
           </ul>
@@ -88,20 +120,64 @@ export function ContactForm({ endpoint }: { endpoint: string }) {
 
       <div className="grid gap-5 sm:grid-cols-2">
         <Field id="name" label="Name" error={errors.name}>
-          <input id="contact-name" name="name" type="text" autoComplete="name" required maxLength={100} {...aria('name', errors)} className={inputClass(errors.name)} />
+          <input
+            id="contact-name"
+            name="name"
+            type="text"
+            autoComplete="name"
+            required
+            maxLength={100}
+            {...aria('name', errors)}
+            className={inputClass(errors.name)}
+          />
         </Field>
         <Field id="email" label="Email" error={errors.email}>
-          <input id="contact-email" name="email" type="email" autoComplete="email" required inputMode="email" {...aria('email', errors)} className={inputClass(errors.email)} />
+          <input
+            id="contact-email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            inputMode="email"
+            {...aria('email', errors)}
+            className={inputClass(errors.email)}
+          />
         </Field>
       </div>
       <Field id="topic" label="Topic" error={errors.topic}>
-        <select id="contact-topic" name="topic" required defaultValue="" {...aria('topic', errors)} className={inputClass(errors.topic)}>
-          <option value="" disabled>Choose a topic…</option>
-          {CONTACT_TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
+        <select
+          id="contact-topic"
+          name="topic"
+          required
+          defaultValue=""
+          {...aria('topic', errors)}
+          className={inputClass(errors.topic)}
+        >
+          <option value="" disabled>
+            Choose a topic…
+          </option>
+          {CONTACT_TOPICS.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
         </select>
       </Field>
-      <Field id="message" label="Message" hint="At least 20 characters. Please don't include confidential information." error={errors.message}>
-        <textarea id="contact-message" name="message" required rows={7} maxLength={5000} {...aria('message', errors, true)} className={cx(inputClass(errors.message), 'h-auto py-2.5')} />
+      <Field
+        id="message"
+        label="Message"
+        hint="At least 20 characters. Please don't include confidential information."
+        error={errors.message}
+      >
+        <textarea
+          id="contact-message"
+          name="message"
+          required
+          rows={7}
+          maxLength={5000}
+          {...aria('message', errors, true)}
+          className={cx(inputClass(errors.message), 'h-auto py-2.5')}
+        />
       </Field>
 
       {/* Honeypot — visually hidden and removed from the accessibility tree and tab order. */}
@@ -123,7 +199,11 @@ export function ContactForm({ endpoint }: { endpoint: string }) {
         </p>
       </div>
       {status.state === 'error' ? (
-        <div role="alert" className="rounded-md border border-danger/50 bg-danger/10 p-4 text-sm" data-testid="contact-submit-error">
+        <div
+          role="alert"
+          className="rounded-md border border-danger/50 bg-danger/10 p-4 text-sm"
+          data-testid="contact-submit-error"
+        >
           <p className="font-semibold text-danger">Your message was not sent.</p>
           <p className="mt-1">{status.message}</p>
         </div>
@@ -133,7 +213,9 @@ export function ContactForm({ endpoint }: { endpoint: string }) {
 }
 
 function aria(field: keyof ContactErrors, errors: ContactErrors, hasHint = false) {
-  const describedBy = [hasHint ? `contact-${field}-hint` : null, errors[field] ? `contact-${field}-error` : null].filter(Boolean).join(' ');
+  const describedBy = [hasHint ? `contact-${field}-hint` : null, errors[field] ? `contact-${field}-error` : null]
+    .filter(Boolean)
+    .join(' ');
   return { 'aria-invalid': errors[field] ? true : undefined, 'aria-describedby': describedBy || undefined };
 }
 
@@ -144,18 +226,38 @@ function inputClass(error?: string) {
   );
 }
 
-function Field({ id, label, hint, error, children }: { id: string; label: string; hint?: string; error?: string; children: React.ReactNode }) {
+function Field({
+  id,
+  label,
+  hint,
+  error,
+  children,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <label htmlFor={`contact-${id}`} className="block text-sm font-medium">
-        {label} <span className="text-danger" aria-hidden>*</span>
+        {label}{' '}
+        <span className="text-danger" aria-hidden>
+          *
+        </span>
         <span className="sr-only"> (required)</span>
       </label>
-      {hint ? <p id={`contact-${id}-hint`} className="mt-1 text-xs text-muted">{hint}</p> : null}
+      {hint ? (
+        <p id={`contact-${id}-hint`} className="mt-1 text-xs text-muted">
+          {hint}
+        </p>
+      ) : null}
       <div className="mt-1.5">{children}</div>
       {error ? (
         <p id={`contact-${id}-error`} className="mt-1.5 text-sm text-danger">
-          <span aria-hidden>⚠ </span>{error}
+          <span aria-hidden>⚠ </span>
+          {error}
         </p>
       ) : null}
     </div>

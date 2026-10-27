@@ -1,0 +1,35 @@
+id: IOT-ADR-001
+title: Store-and-forward at the edge with idempotent message identities
+status: accepted
+date: 2026-09-10
+caseStudy: industrial-telemetry-platform
+context: >-
+  Plant networks lose connectivity for minutes to days. Telemetry produced while offline is still
+  valuable (quality investigations, regulatory records), but replaying it after an outage must not create
+  duplicates or overwhelm the cloud ingestion tier.
+decision: >-
+  Edge gateways persist every reading to a bounded local disk queue before publishing, and publish with
+  MQTT QoS 1. Each message carries a deterministic identity (device id, tag id, source timestamp and
+  sequence number) so the cloud can de-duplicate. After reconnecting, gateways replay the backlog at a
+  rate limit negotiated per site, interleaved with live data so current state is never starved.
+alternatives:
+  - option: QoS 2 (exactly-once at the MQTT layer)
+    summary: Use MQTT's four-step handshake for every message.
+    rejectedBecause: >-
+      Guarantees end at the broker, doubles round trips on constrained links, and still needs
+      de-duplication once data leaves the broker.
+  - option: No local buffering (QoS 0)
+    summary: Accept data loss during outages.
+    rejectedBecause: Loses exactly the data that matters most — what happened while things were going wrong.
+consequences:
+  positive:
+    - No data loss for outages shorter than the buffer horizon.
+    - Duplicates are harmless because identities are deterministic.
+    - Backlog replay cannot starve live data or overload ingestion.
+  negative:
+    - Gateways need local disk sizing and monitoring.
+    - Late, out-of-order data must be handled by every downstream consumer.
+risks:
+  - Buffer exhaustion during very long outages; oldest data is dropped first and the loss is reported.
+followUps:
+  - Expose buffer depth and oldest-unsent age as gateway health metrics.

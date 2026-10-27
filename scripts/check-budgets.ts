@@ -82,14 +82,18 @@ console.log(`Initial JavaScript per route (gzip, budget ${INITIAL_JS_BUDGET_KB} 
 for (const r of rows) {
   const over = r.kb > INITIAL_JS_BUDGET_KB;
   if (over) failed = true;
-  console.log(`${over ? '✗' : '✓'} ${r.route.padEnd(width)}  ${r.kb.toFixed(1).padStart(6)} KB  (${r.scripts} scripts)`);
+  console.log(
+    `${over ? '✗' : '✓'} ${r.route.padEnd(width)}  ${r.kb.toFixed(1).padStart(6)} KB  (${r.scripts} scripts)`,
+  );
 }
 console.log('\nLazy-loaded features (gzip, loaded on demand only)\n');
 for (const r of lazyRows) {
   const over = r.kb > r.limitKB;
   const missing = r.count === 0;
   if (over) failed = true;
-  console.log(`${over ? '✗' : missing ? '!' : '✓'} ${r.name.padEnd(40)} ${r.kb.toFixed(1).padStart(6)} KB / ${r.limitKB} KB  (${r.count} chunks)${missing ? '  — not found in build' : ''}`);
+  console.log(
+    `${over ? '✗' : missing ? '!' : '✓'} ${r.name.padEnd(40)} ${r.kb.toFixed(1).padStart(6)} KB / ${r.limitKB} KB  (${r.count} chunks)${missing ? '  — not found in build' : ''}`,
+  );
 }
 
 if (failed) {

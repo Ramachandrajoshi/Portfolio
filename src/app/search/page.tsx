@@ -12,11 +12,26 @@ export const metadata = pageMetadata({
 export default function SearchPage() {
   return (
     <>
-      <PageHeader crumbs={[{ name: 'Search', path: '/search/' }]} eyebrow="Index" title="Search" lead={<p>Full-text search across case studies, articles and projects — served entirely from static files.</p>} />
+      <PageHeader
+        crumbs={[{ name: 'Search', path: '/search/' }]}
+        eyebrow="Index"
+        title="Search"
+        lead={<p>Full-text search across case studies, articles and projects — served entirely from static files.</p>}
+      />
       <div className="container-page py-10">
         <SearchClient />
         <noscript>
-          <p className="mt-6 text-muted">Search requires JavaScript. Browse the <a className="link" href="../articles/">articles</a> or <a className="link" href="../architecture/">case studies</a> instead.</p>
+          <p className="mt-6 text-muted">
+            Search requires JavaScript. Browse the{' '}
+            <a className="link" href="../articles/">
+              articles
+            </a>{' '}
+            or{' '}
+            <a className="link" href="../architecture/">
+              case studies
+            </a>{' '}
+            instead.
+          </p>
         </noscript>
       </div>
     </>

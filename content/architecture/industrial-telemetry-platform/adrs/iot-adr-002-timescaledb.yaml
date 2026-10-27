@@ -1,0 +1,35 @@
+id: IOT-ADR-002
+title: TimescaleDB for telemetry, with continuous aggregates and tiered retention
+status: accepted
+date: 2026-09-12
+caseStudy: industrial-telemetry-platform
+context: >-
+  Queries are dominated by recent time ranges per asset, trend charts over weeks to years, and joins with
+  relational asset metadata. The team already operates PostgreSQL and needs SQL for analysts.
+decision: >-
+  Store readings in TimescaleDB hypertables partitioned by time (and space-partitioned by tenant where
+  volume warrants), enable native compression on chunks older than a few days, maintain continuous
+  aggregates at 1-minute and 1-hour resolution, and apply retention policies per tier: raw data for a
+  short window, aggregates for years, raw archive in object storage for audit.
+alternatives:
+  - option: Purpose-built time-series database
+    summary: A dedicated TSDB with its own query language.
+    rejectedBecause: >-
+      Another operational technology to run, weaker joins with relational metadata, and a query language
+      analysts would need to learn.
+  - option: Plain PostgreSQL tables with manual partitioning
+    summary: Native declarative partitioning and hand-written roll-ups.
+    rejectedBecause: Re-implements compression, roll-up refresh and retention that TimescaleDB provides.
+consequences:
+  positive:
+    - SQL and joins with asset metadata; existing PostgreSQL skills apply.
+    - Dashboards read small aggregates instead of scanning raw data.
+    - Storage cost bounded by compression and tiered retention.
+  negative:
+    - Compressed chunks make late updates more expensive; late data beyond the compression horizon is
+      routed to a correction path.
+    - Continuous-aggregate refresh lag must be understood by dashboard users.
+risks:
+  - Unbounded tag cardinality (per-tenant custom tags) can bloat indexes; tag registration is governed.
+followUps:
+  - Benchmark ingest throughput on representative hardware before committing to per-shard tenant density.

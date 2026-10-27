@@ -40,7 +40,15 @@ const landmarkHeights: Record<string, number> = { architecture: 41, ai: 9, iot: 
 export function HeroPoster() {
   const boxes: Box[] = [
     ...generateCity().map((b) => ({ x: b.x, z: b.z, hx: b.hx, hz: b.hz, h: b.height, kind: 'building' as const })),
-    ...LANDMARKS.map((l) => ({ x: l.x, z: l.z, hx: l.halfX * 0.8, hz: l.halfZ * 0.8, h: landmarkHeights[l.id] ?? 8, kind: 'landmark' as const, color: l.color })),
+    ...LANDMARKS.map((l) => ({
+      x: l.x,
+      z: l.z,
+      hx: l.halfX * 0.8,
+      hz: l.halfZ * 0.8,
+      h: landmarkHeights[l.id] ?? 8,
+      kind: 'landmark' as const,
+      color: l.color,
+    })),
   ].sort((a, b) => a.x + a.z - (b.x + b.z)); // painter's algorithm: back to front
 
   const [minX] = iso(-75, 0, 75);
@@ -53,7 +61,14 @@ export function HeroPoster() {
   const roads = [-70, -50, -30, -10, 10, 30, 50, 70];
 
   return (
-    <svg viewBox={viewBox} preserveAspectRatio="xMidYMid slice" className="h-full w-full" aria-hidden focusable="false" data-testid="hero-poster">
+    <svg
+      viewBox={viewBox}
+      preserveAspectRatio="xMidYMid slice"
+      className="h-full w-full"
+      aria-hidden
+      focusable="false"
+      data-testid="hero-poster"
+    >
       <defs>
         <linearGradient id="poster-sky" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="var(--poster-sky-top)" />
@@ -68,7 +83,13 @@ export function HeroPoster() {
           <rect x="1.5" y="2" width="2.4" height="2.6" fill="var(--poster-window-alt)" opacity="0.55" />
         </pattern>
       </defs>
-      <rect x={minX - 400} y={minY - 400} width={maxX - minX + 800} height={maxY - minY + 800} fill="url(#poster-sky)" />
+      <rect
+        x={minX - 400}
+        y={minY - 400}
+        width={maxX - minX + 800}
+        height={maxY - minY + 800}
+        fill="url(#poster-sky)"
+      />
       <polygon points={ground} fill="var(--poster-ground)" />
       <g stroke="var(--poster-line)" strokeWidth="0.8" opacity="0.55">
         {roads.map((r) => (
@@ -86,7 +107,13 @@ export function HeroPoster() {
               <polygon points={f.left} fill="var(--poster-side-dark)" stroke={b.color} strokeWidth="1.2" />
               <polygon points={f.right} fill="var(--poster-side)" stroke={b.color} strokeWidth="1.2" />
               <polygon points={f.top} fill={b.color} opacity="0.9" />
-              <circle cx={iso(b.x, 0, b.z)[0]} cy={iso(b.x, 0, b.z)[1]} r={b.hx * S * 2.2} fill={b.color} opacity="0.12" />
+              <circle
+                cx={iso(b.x, 0, b.z)[0]}
+                cy={iso(b.x, 0, b.z)[1]}
+                r={b.hx * S * 2.2}
+                fill={b.color}
+                opacity="0.12"
+              />
             </g>
           );
         }

@@ -1,0 +1,31 @@
+id: ED-ADR-002
+title: At-least-once delivery with idempotent consumers (inbox pattern)
+status: accepted
+date: 2026-10-08
+caseStudy: event-driven-processing
+context: >-
+  Every hop — relay, broker, consumer acknowledgement — can redeliver. "Exactly-once" features of brokers
+  end at the broker boundary and do not cover side effects in a consumer's own database or in external
+  APIs such as payments.
+decision: >-
+  Treat delivery as at-least-once everywhere and make effects idempotent. Each consumer records the event
+  id in an inbox table with a unique constraint in the same transaction as its side effect; a duplicate
+  insert means "already processed" and the message is acknowledged without repeating the effect. Calls to
+  external services pass a deterministic idempotency key derived from the event id.
+alternatives:
+  - option: Rely on broker exactly-once semantics
+    summary: Transactions in the broker plus consumer offsets.
+    rejectedBecause: Does not cover side effects outside the broker; ties the design to one vendor's feature.
+  - option: Natural idempotency only
+    summary: Design every operation as an upsert.
+    rejectedBecause: Works for some state changes but not for effects like charging a card or sending an e-mail.
+consequences:
+  positive:
+    - Duplicates are harmless at every hop, so retries and replays are safe.
+    - Broker-agnostic; works across the whole flow including external APIs.
+  negative:
+    - One extra write per message; inbox retention must exceed the maximum redelivery window.
+risks:
+  - An effect outside the consumer's database transaction (e.g. an e-mail) can still double-send without an external idempotency key.
+followUps:
+  - Library support so every consumer gets the inbox behaviour by default.

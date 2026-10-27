@@ -36,7 +36,11 @@ export function Sky({ palette, night }: { palette: ScenePalette; night: boolean 
         side: THREE.BackSide,
         depthWrite: false,
         fog: false,
-        uniforms: { uSky: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() } },
+        uniforms: {
+          uSky: { value: new THREE.Color() },
+          uHorizon: { value: new THREE.Color() },
+          uGlow: { value: new THREE.Color() },
+        },
       }),
     [],
   );
@@ -74,7 +78,15 @@ export function Sky({ palette, night }: { palette: ScenePalette; night: boolean 
       </mesh>
       {night ? (
         <points geometry={stars}>
-          <pointsMaterial color="#cfe8ff" size={1.1} sizeAttenuation={false} transparent opacity={0.7} fog={false} depthWrite={false} />
+          <pointsMaterial
+            color="#cfe8ff"
+            size={1.1}
+            sizeAttenuation={false}
+            transparent
+            opacity={0.7}
+            fog={false}
+            depthWrite={false}
+          />
         </points>
       ) : null}
     </group>

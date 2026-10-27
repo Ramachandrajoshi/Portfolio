@@ -20,7 +20,6 @@ export const WORLD = {
   runSpeed: 11.5,
   jumpVelocity: 7.2,
   gravity: 22,
-  interactRadius: 10,
 } as const;
 
 export type LandmarkId = 'architecture' | 'ai' | 'iot' | 'projects' | 'profile';
@@ -37,6 +36,8 @@ export interface Landmark {
   halfZ: number;
   /** Where "fly to" places the character, facing the landmark. */
   approach: { x: number; z: number };
+  /** Distance from the footprint at which the interaction prompt appears (tall landmarks reach further). */
+  interactRadius: number;
   color: string;
   href: string;
   cta: string;
@@ -53,6 +54,7 @@ export const LANDMARKS: Landmark[] = [
     halfX: 4.5,
     halfZ: 4.5,
     approach: { x: 0, z: -16 },
+    interactRadius: 21,
     color: '#22d3ee',
     href: '/architecture/',
     cta: 'Explore the case studies',
@@ -68,6 +70,7 @@ export const LANDMARKS: Landmark[] = [
     halfX: 5.5,
     halfZ: 5.5,
     approach: { x: 27, z: -20 },
+    interactRadius: 10,
     color: '#a78bfa',
     href: '/architecture/llm-inference-platform/',
     cta: 'Read the inference case study',
@@ -83,6 +86,7 @@ export const LANDMARKS: Landmark[] = [
     halfX: 6,
     halfZ: 4.5,
     approach: { x: 20, z: 27 },
+    interactRadius: 10,
     color: '#f5b544',
     href: '/architecture/industrial-telemetry-platform/',
     cta: 'Follow the telemetry pipeline',
@@ -98,10 +102,12 @@ export const LANDMARKS: Landmark[] = [
     halfX: 6,
     halfZ: 4.5,
     approach: { x: -20, z: 27 },
+    interactRadius: 10,
     color: '#60a5fa',
     href: '/projects/',
     cta: 'See the projects',
-    intro: 'Where things get built. Projects documented with the same discipline as the case studies: problem, constraints, decisions and lessons.',
+    intro:
+      'Where things get built. Projects documented with the same discipline as the case studies: problem, constraints, decisions and lessons.',
   },
   {
     id: 'profile',
@@ -112,10 +118,12 @@ export const LANDMARKS: Landmark[] = [
     halfX: 3.2,
     halfZ: 3.2,
     approach: { x: -30, z: -20 },
+    interactRadius: 10,
     color: '#e7ecf5',
     href: '/about/',
     cta: 'Meet Ramachandra',
-    intro: 'The beacon at the edge of the city. Background, focus areas and how to get in touch — résumé and contact are one step away.',
+    intro:
+      'The beacon at the edge of the city. Background, focus areas and how to get in touch — résumé and contact are one step away.',
   },
 ];
 
@@ -173,7 +181,15 @@ export function generateCity(seed = 20261027): Building[] {
       if (layout < 0.28) {
         // One tower filling most of the block.
         const h = (18 + random() * 26) * heightScale;
-        buildings.push({ x: bx, z: bz, hx: block / 2 - 1.2, hz: block / 2 - 1.2, height: h, seed: random(), style: Math.floor(random() * 3) });
+        buildings.push({
+          x: bx,
+          z: bz,
+          hx: block / 2 - 1.2,
+          hz: block / 2 - 1.2,
+          height: h,
+          seed: random(),
+          style: Math.floor(random() * 3),
+        });
       } else {
         // 2×2 lots with gaps (alleys).
         const lot = (block - 2) / 2;
@@ -220,8 +236,14 @@ export function generateSkyline(seed = 7): Building[] {
 }
 
 export function buildColliders(buildings: Building[]): AABB[] {
-  const boxes: AABB[] = buildings.map((b) => ({ minX: b.x - b.hx, maxX: b.x + b.hx, minZ: b.z - b.hz, maxZ: b.z + b.hz }));
-  for (const l of LANDMARKS) boxes.push({ minX: l.x - l.halfX, maxX: l.x + l.halfX, minZ: l.z - l.halfZ, maxZ: l.z + l.halfZ });
+  const boxes: AABB[] = buildings.map((b) => ({
+    minX: b.x - b.hx,
+    maxX: b.x + b.hx,
+    minZ: b.z - b.hz,
+    maxZ: b.z + b.hz,
+  }));
+  for (const l of LANDMARKS)
+    boxes.push({ minX: l.x - l.halfX, maxX: l.x + l.halfX, minZ: l.z - l.halfZ, maxZ: l.z + l.halfZ });
   return boxes;
 }
 
@@ -229,7 +251,12 @@ export function buildColliders(buildings: Building[]): AABB[] {
  * Pushes a circle (character footprint) out of every overlapping AABB along the shortest
  * separating direction, then clamps to the world boundary. Returns the corrected position.
  */
-export function resolveCollisions(x: number, z: number, radius: number, colliders: AABB[]): { x: number; z: number; hit: boolean } {
+export function resolveCollisions(
+  x: number,
+  z: number,
+  radius: number,
+  colliders: AABB[],
+): { x: number; z: number; hit: boolean } {
   let hit = false;
   for (let iteration = 0; iteration < 3; iteration++) {
     let moved = false;
@@ -299,7 +326,12 @@ export function cameraBoomFraction(
 ): number {
   let fraction = 1;
   for (const b of buildings) {
-    const t = segmentHitsBox(from.x, from.z, to.x, to.z, { minX: b.x - b.hx - 0.4, maxX: b.x + b.hx + 0.4, minZ: b.z - b.hz - 0.4, maxZ: b.z + b.hz + 0.4 });
+    const t = segmentHitsBox(from.x, from.z, to.x, to.z, {
+      minX: b.x - b.hx - 0.4,
+      maxX: b.x + b.hx + 0.4,
+      minZ: b.z - b.hz - 0.4,
+      maxZ: b.z + b.hz + 0.4,
+    });
     if (t === null || t >= fraction) continue;
     const yAt = from.y + (to.y - from.y) * t;
     if (yAt < b.height + 0.5) fraction = Math.max(0.12, t - 0.04);
@@ -307,16 +339,22 @@ export function cameraBoomFraction(
   return fraction;
 }
 
-export function nearestLandmark(x: number, z: number): { landmark: Landmark; distance: number } {
-  let best = { landmark: LANDMARKS[0]!, distance: Infinity };
+/** Distance from (x, z) to a landmark's footprint edge (0 inside it). */
+export function footprintDistance(l: Landmark, x: number, z: number): number {
+  const dx = Math.max(Math.abs(x - l.x) - l.halfX, 0);
+  const dz = Math.max(Math.abs(z - l.z) - l.halfZ, 0);
+  return Math.hypot(dx, dz);
+}
+
+/** Nearest landmark, ranked relative to each landmark's own interaction radius. */
+export function nearestLandmark(x: number, z: number): { landmark: Landmark; distance: number; inRange: boolean } {
+  let best = { landmark: LANDMARKS[0]!, distance: Infinity, score: Infinity };
   for (const l of LANDMARKS) {
-    // Distance to the landmark's footprint edge, not its centre.
-    const dx = Math.max(Math.abs(x - l.x) - l.halfX, 0);
-    const dz = Math.max(Math.abs(z - l.z) - l.halfZ, 0);
-    const d = Math.hypot(dx, dz);
-    if (d < best.distance) best = { landmark: l, distance: d };
+    const distance = footprintDistance(l, x, z);
+    const score = distance / l.interactRadius;
+    if (score < best.score) best = { landmark: l, distance, score };
   }
-  return best;
+  return { landmark: best.landmark, distance: best.distance, inRange: best.score < 1 };
 }
 
 export interface MoveInput {
@@ -340,7 +378,13 @@ export interface CharacterState {
  * Integrates one frame of camera-relative movement with smoothing, jumping and collision.
  * `cameraYaw` is the camera's azimuth; "forward" means away from the camera.
  */
-export function stepCharacter(state: CharacterState, input: MoveInput, cameraYaw: number, dt: number, colliders: AABB[]): CharacterState {
+export function stepCharacter(
+  state: CharacterState,
+  input: MoveInput,
+  cameraYaw: number,
+  dt: number,
+  colliders: AABB[],
+): CharacterState {
   const len = Math.hypot(input.forward, input.right);
   const fwd = len > 1 ? input.forward / len : input.forward;
   const rgt = len > 1 ? input.right / len : input.right;

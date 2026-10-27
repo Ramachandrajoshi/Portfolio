@@ -1,0 +1,32 @@
+id: LLM-ADR-002
+title: 4-bit weight quantisation, accepted only through a task-specific quality gate
+status: accepted
+date: 2026-10-03
+caseStudy: llm-inference-platform
+context: >-
+  FP16 weights of an 8B-class model use about 16 GB, leaving little room for KV cache on a 24 GB GPU.
+  4-bit weight-only quantisation frees roughly 11 GB for KV cache — about three times the concurrent
+  context — but quality loss varies by model, method and task, and is rarely visible in generic benchmarks.
+decision: >-
+  Serve 4-bit weight-quantised models by default. A quantised artefact is promoted only if it stays within
+  agreed tolerances of the FP16 baseline on the platform's own evaluation suites (extraction accuracy,
+  tool-call validity, refusal behaviour, long-context retrieval). Evaluation reports are stored with the
+  artefact in the registry; the FP16 variant remains deployable for workloads that fail the gate.
+alternatives:
+  - option: FP16 everywhere
+    summary: No quantisation.
+    rejectedBecause: Triples the hardware needed for the same concurrent context.
+  - option: Aggressive 2–3 bit quantisation
+    summary: Maximise free memory.
+    rejectedBecause: Quality degradation is typically too large for structured outputs and tool calling.
+consequences:
+  positive:
+    - Roughly 3× more KV capacity on the same GPU (see capacity reasoning).
+    - Lower memory bandwidth per decoded token — higher single-stream speed.
+  negative:
+    - An evaluation pipeline is now a release dependency.
+    - Some kernels and features are only available for specific quantisation formats.
+risks:
+  - Eval suites that do not represent real traffic give false confidence; suites are refreshed from sampled, anonymised production prompts.
+followUps:
+  - Evaluate FP8 KV-cache quantisation separately — it trades KV capacity against long-context accuracy.

@@ -26,7 +26,9 @@ export function ProjectFilter({ categories, listId }: { categories: { id: string
           onClick={() => setActive(c.id)}
           className={cx(
             'rounded-full border px-3 py-1 text-sm',
-            active === c.id ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:border-accent hover:text-accent',
+            active === c.id
+              ? 'border-accent bg-accent/10 text-accent'
+              : 'border-border text-muted hover:border-accent hover:text-accent',
           )}
         >
           {c.label}

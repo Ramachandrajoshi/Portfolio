@@ -25,7 +25,14 @@ export interface SandpackProps {
  *  2. Only when the reader presses "Run" is Sandpack (≈ hundreds of KB) downloaded.
  *  3. Execution happens in Sandpack's cross-origin iframe bundler — never in this origin.
  */
-export async function Sandpack({ title, description, template = 'vanilla-ts', example, files: inlineFiles, activeFile }: SandpackProps) {
+export async function Sandpack({
+  title,
+  description,
+  template = 'vanilla-ts',
+  example,
+  files: inlineFiles,
+  activeFile,
+}: SandpackProps) {
   const files = example ? readExample(example) : (inlineFiles ?? {});
   const entries = Object.entries(files);
   if (entries.length === 0) throw new Error(`<Sandpack title="${title}"> needs at least one file.`);
@@ -35,13 +42,16 @@ export async function Sandpack({ title, description, template = 'vanilla-ts', ex
       path,
       html: await codeToHtml(code.trim(), {
         lang: languageFor(path),
-        themes: { light: 'github-light', dark: 'github-dark-dimmed' },
+        themes: { light: 'github-light-high-contrast', dark: 'github-dark-high-contrast' },
         defaultColor: false,
       }),
     })),
   );
   return (
-    <figure className="not-prose my-8 overflow-hidden rounded-lg border border-border bg-surface" data-component="sandpack">
+    <figure
+      className="not-prose my-8 overflow-hidden rounded-lg border border-border bg-surface"
+      data-component="sandpack"
+    >
       <figcaption className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border bg-surface-2/70 px-4 py-3">
         <span>
           <span className="block font-display font-semibold">{title}</span>
@@ -68,8 +78,19 @@ export async function Sandpack({ title, description, template = 'vanilla-ts', ex
 function languageFor(path: string): string {
   const ext = path.split('.').pop() ?? '';
   return (
-    { ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', json: 'json', css: 'css', html: 'html', cs: 'csharp', rs: 'rust', py: 'python', sql: 'sql' }[ext] ??
-    'text'
+    {
+      ts: 'ts',
+      tsx: 'tsx',
+      js: 'js',
+      jsx: 'jsx',
+      json: 'json',
+      css: 'css',
+      html: 'html',
+      cs: 'csharp',
+      rs: 'rust',
+      py: 'python',
+      sql: 'sql',
+    }[ext] ?? 'text'
   );
 }
 
@@ -89,5 +110,7 @@ function readExample(name: string): Record<string, string> {
     throw new Error(`<Sandpack example="${name}"> — directory content/examples/${name} not found.`);
   }
   // Entry file first so the static preview shows it.
-  return Object.fromEntries(Object.entries(files).sort(([a], [b]) => Number(b.startsWith('/index')) - Number(a.startsWith('/index'))));
+  return Object.fromEntries(
+    Object.entries(files).sort(([a], [b]) => Number(b.startsWith('/index')) - Number(a.startsWith('/index'))),
+  );
 }

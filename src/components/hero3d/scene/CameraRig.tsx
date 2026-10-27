@@ -79,7 +79,8 @@ export function CameraRig({
       return;
     }
     // Snap in quickly when the boom shortens (collision), ease out slowly otherwise.
-    const pull = camera.position.distanceToSquared(target.current) > desired.current.distanceToSquared(target.current) ? 18 : 6;
+    const pull =
+      camera.position.distanceToSquared(target.current) > desired.current.distanceToSquared(target.current) ? 18 : 6;
     camera.position.lerp(desired.current, reducedMotion ? 1 : 1 - Math.exp(-dt * pull));
     camera.lookAt(target.current);
   }, -1);

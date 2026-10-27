@@ -37,14 +37,28 @@ export function Tradeoffs({
           </span>
         ) : null}
       </figcaption>
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* Focusable so keyboard users can scroll the table on narrow screens (WCAG 2.1.1). */}
+      <div
+        className="overflow-x-auto rounded-lg border border-border"
+        tabIndex={0}
+        role="region"
+        aria-label={`${title} (scrollable table)`}
+      >
         <table className="w-full min-w-[40rem] border-collapse text-left text-sm">
           <thead className="bg-surface-2">
             <tr>
-              <th scope="col" className="w-[20%] p-3 font-semibold">{cols.option}</th>
-              <th scope="col" className="w-[27%] p-3 font-semibold">{cols.benefits}</th>
-              <th scope="col" className="w-[27%] p-3 font-semibold">{cols.drawbacks}</th>
-              <th scope="col" className="w-[26%] p-3 font-semibold">{cols.chooseWhen}</th>
+              <th scope="col" className="w-[20%] p-3 font-semibold">
+                {cols.option}
+              </th>
+              <th scope="col" className="w-[27%] p-3 font-semibold">
+                {cols.benefits}
+              </th>
+              <th scope="col" className="w-[27%] p-3 font-semibold">
+                {cols.drawbacks}
+              </th>
+              <th scope="col" className="w-[26%] p-3 font-semibold">
+                {cols.chooseWhen}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -53,7 +67,7 @@ export function Tradeoffs({
                 <th scope="row" className="border-t border-border p-3 align-top font-semibold">
                   {o.name}
                   {o.selected ? (
-                    <span className="mt-1 block font-mono text-[0.68rem] font-medium uppercase tracking-wider text-accent">
+                    <span className="mt-1 block font-mono text-[0.68rem] font-medium tracking-wider text-accent uppercase">
                       ✓ Selected
                     </span>
                   ) : null}

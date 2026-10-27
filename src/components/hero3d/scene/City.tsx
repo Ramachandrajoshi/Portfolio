@@ -58,7 +58,15 @@ function useBuildingMaterial(palette: ScenePalette) {
 }
 
 /** All buildings of one kind in a single draw call (InstancedMesh + per-instance seed/style). */
-export function Buildings({ buildings, palette, animate }: { buildings: Building[]; palette: ScenePalette; animate: boolean }) {
+export function Buildings({
+  buildings,
+  palette,
+  animate,
+}: {
+  buildings: Building[];
+  palette: ScenePalette;
+  animate: boolean;
+}) {
   const ref = useRef<THREE.InstancedMesh>(null);
   const material = useBuildingMaterial(palette);
   const geometry = useMemo(() => {
@@ -145,7 +153,9 @@ export function StreetLights({ palette }: { palette: ScenePalette }) {
             { x: along, z: road + side * 3.6 },
           ]) {
             // Keep sightlines to landmarks and their approach points clear.
-            const blocked = LANDMARKS.some((l) => Math.hypot(p.x - l.x, p.z - l.z) < 13 || Math.hypot(p.x - l.approach.x, p.z - l.approach.z) < 7);
+            const blocked = LANDMARKS.some(
+              (l) => Math.hypot(p.x - l.x, p.z - l.z) < 13 || Math.hypot(p.x - l.approach.x, p.z - l.approach.z) < 7,
+            );
             if (!blocked && !(Math.abs(p.x) < 4 && p.z < 0 && p.z > -34)) list.push(p);
           }
         }
@@ -204,7 +214,15 @@ export function StreetLights({ palette }: { palette: ScenePalette }) {
 }
 
 /** Slowly rising "data motes". Frozen in place under reduced motion. */
-export function Particles({ palette, animate, count = 700 }: { palette: ScenePalette; animate: boolean; count?: number }) {
+export function Particles({
+  palette,
+  animate,
+  count = 700,
+}: {
+  palette: ScenePalette;
+  animate: boolean;
+  count?: number;
+}) {
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -323,9 +341,19 @@ export function Boundary({ palette }: { palette: ScenePalette }) {
   return (
     <group>
       {[0, 1, 2, 3].map((i) => (
-        <mesh key={i} position={[i === 0 ? b : i === 1 ? -b : 0, 1.2, i === 2 ? b : i === 3 ? -b : 0]} rotation-y={i < 2 ? Math.PI / 2 : 0}>
+        <mesh
+          key={i}
+          position={[i === 0 ? b : i === 1 ? -b : 0, 1.2, i === 2 ? b : i === 3 ? -b : 0]}
+          rotation-y={i < 2 ? Math.PI / 2 : 0}
+        >
           <planeGeometry args={[b * 2, 2.4]} />
-          <meshBasicMaterial color={palette.rim} transparent opacity={0.06} side={THREE.DoubleSide} depthWrite={false} />
+          <meshBasicMaterial
+            color={palette.rim}
+            transparent
+            opacity={0.06}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
         </mesh>
       ))}
     </group>

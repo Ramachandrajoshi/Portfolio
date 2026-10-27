@@ -10,7 +10,15 @@ import { WORLD, type CharacterState } from '../world';
  * Procedurally built third-person character (no external model). Limbs are pivoted groups
  * animated from the simulation state: idle breathing, walk and run cycles, airborne tuck.
  */
-export function Character({ state, palette, reducedMotion }: { state: RefObject<CharacterState>; palette: ScenePalette; reducedMotion: boolean }) {
+export function Character({
+  state,
+  palette,
+  reducedMotion,
+}: {
+  state: RefObject<CharacterState>;
+  palette: ScenePalette;
+  reducedMotion: boolean;
+}) {
   const root = useRef<THREE.Group>(null);
   const body = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Group>(null);

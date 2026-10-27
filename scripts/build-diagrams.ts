@@ -35,14 +35,44 @@ type Theme = 'light' | 'dark';
 /* Palette mirrors src/styles/tokens.css. */
 const D2_THEME: Record<Theme, Record<string, string>> = {
   light: {
-    N1: '#0b1220', N2: '#45526b', N3: '#5d6a82', N4: '#a9b6cb', N5: '#d3dbe8', N6: '#eef2f8', N7: '#ffffff',
-    B1: '#0e7490', B2: '#0e7490', B3: '#67b8cc', B4: '#e0f2f7', B5: '#eef8fb', B6: '#f7fbfd',
-    AA2: '#6d28d9', AA4: '#ede9fe', AA5: '#f5f3ff', AB4: '#fef3c7', AB5: '#fffbeb',
+    N1: '#0b1220',
+    N2: '#45526b',
+    N3: '#5d6a82',
+    N4: '#a9b6cb',
+    N5: '#d3dbe8',
+    N6: '#eef2f8',
+    N7: '#ffffff',
+    B1: '#0e7490',
+    B2: '#0e7490',
+    B3: '#67b8cc',
+    B4: '#e0f2f7',
+    B5: '#eef8fb',
+    B6: '#f7fbfd',
+    AA2: '#6d28d9',
+    AA4: '#ede9fe',
+    AA5: '#f5f3ff',
+    AB4: '#fef3c7',
+    AB5: '#fffbeb',
   },
   dark: {
-    N1: '#e7ecf5', N2: '#a3b0c6', N3: '#8593ab', N4: '#33415f', N5: '#1f2b44', N6: '#121b2e', N7: '#070b16',
-    B1: '#22d3ee', B2: '#22d3ee', B3: '#1b7f93', B4: '#0f2235', B5: '#0d1a2b', B6: '#0b1424',
-    AA2: '#a78bfa', AA4: '#221a3d', AA5: '#1a1530', AB4: '#3a2a0c', AB5: '#2a1f0a',
+    N1: '#e7ecf5',
+    N2: '#a3b0c6',
+    N3: '#8593ab',
+    N4: '#33415f',
+    N5: '#1f2b44',
+    N6: '#121b2e',
+    N7: '#070b16',
+    B1: '#22d3ee',
+    B2: '#22d3ee',
+    B3: '#1b7f93',
+    B4: '#0f2235',
+    B5: '#0d1a2b',
+    B6: '#0b1424',
+    AA2: '#a78bfa',
+    AA4: '#221a3d',
+    AA5: '#1a1530',
+    AB4: '#3a2a0c',
+    AB5: '#2a1f0a',
   },
 };
 
@@ -55,19 +85,49 @@ function d2Prelude(theme: Theme) {
 
 const MERMAID_THEME: Record<Theme, Record<string, string>> = {
   light: {
-    background: '#ffffff', primaryColor: '#e0f2f7', primaryBorderColor: '#0e7490', primaryTextColor: '#0b1220',
-    secondaryColor: '#ede9fe', tertiaryColor: '#f7fbfd', lineColor: '#45526b', textColor: '#0b1220',
-    noteBkgColor: '#fef3c7', noteTextColor: '#0b1220', noteBorderColor: '#b45309',
-    actorBkg: '#e0f2f7', actorBorder: '#0e7490', actorTextColor: '#0b1220', signalColor: '#45526b', signalTextColor: '#0b1220',
-    labelBoxBkgColor: '#eef2f8', labelBoxBorderColor: '#a9b6cb', loopTextColor: '#0b1220', activationBkgColor: '#eef8fb',
+    background: '#ffffff',
+    primaryColor: '#e0f2f7',
+    primaryBorderColor: '#0e7490',
+    primaryTextColor: '#0b1220',
+    secondaryColor: '#ede9fe',
+    tertiaryColor: '#f7fbfd',
+    lineColor: '#45526b',
+    textColor: '#0b1220',
+    noteBkgColor: '#fef3c7',
+    noteTextColor: '#0b1220',
+    noteBorderColor: '#b45309',
+    actorBkg: '#e0f2f7',
+    actorBorder: '#0e7490',
+    actorTextColor: '#0b1220',
+    signalColor: '#45526b',
+    signalTextColor: '#0b1220',
+    labelBoxBkgColor: '#eef2f8',
+    labelBoxBorderColor: '#a9b6cb',
+    loopTextColor: '#0b1220',
+    activationBkgColor: '#eef8fb',
     fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif',
   },
   dark: {
-    background: '#070b16', primaryColor: '#0f2235', primaryBorderColor: '#22d3ee', primaryTextColor: '#e7ecf5',
-    secondaryColor: '#221a3d', tertiaryColor: '#0b1424', lineColor: '#a3b0c6', textColor: '#e7ecf5',
-    noteBkgColor: '#3a2a0c', noteTextColor: '#e7ecf5', noteBorderColor: '#f5b544',
-    actorBkg: '#0f2235', actorBorder: '#22d3ee', actorTextColor: '#e7ecf5', signalColor: '#a3b0c6', signalTextColor: '#e7ecf5',
-    labelBoxBkgColor: '#121b2e', labelBoxBorderColor: '#33415f', loopTextColor: '#e7ecf5', activationBkgColor: '#0d1a2b',
+    background: '#070b16',
+    primaryColor: '#0f2235',
+    primaryBorderColor: '#22d3ee',
+    primaryTextColor: '#e7ecf5',
+    secondaryColor: '#221a3d',
+    tertiaryColor: '#0b1424',
+    lineColor: '#a3b0c6',
+    textColor: '#e7ecf5',
+    noteBkgColor: '#3a2a0c',
+    noteTextColor: '#e7ecf5',
+    noteBorderColor: '#f5b544',
+    actorBkg: '#0f2235',
+    actorBorder: '#22d3ee',
+    actorTextColor: '#e7ecf5',
+    signalColor: '#a3b0c6',
+    signalTextColor: '#e7ecf5',
+    labelBoxBkgColor: '#121b2e',
+    labelBoxBorderColor: '#33415f',
+    loopTextColor: '#e7ecf5',
+    activationBkgColor: '#0d1a2b',
     fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif',
   },
 };
@@ -99,15 +159,13 @@ async function main() {
 
   for (const file of sources) {
     const source = relative(ROOT, file).replace(/\\/g, '/');
-    const id = relative(CONTENT, file).replace(/\\/g, '/').replace(/\.(d2|mmd)$/, '');
+    const id = relative(CONTENT, file)
+      .replace(/\\/g, '/')
+      .replace(/\.(d2|mmd)$/, '');
     const code = readFileSync(file, 'utf8');
     const hash = createHash('sha256').update(RENDERER_VERSION).update(code).digest('hex').slice(0, 16);
     const cached = previous[id];
-    if (
-      cached?.hash === hash &&
-      existsSync(join(OUT, `${id}.light.svg`)) &&
-      existsSync(join(OUT, `${id}.dark.svg`))
-    ) {
+    if (cached?.hash === hash && existsSync(join(OUT, `${id}.light.svg`)) && existsSync(join(OUT, `${id}.dark.svg`))) {
       manifest[id] = cached;
       continue;
     }
@@ -171,16 +229,16 @@ async function main() {
               },
               { code: item.code, theme, vars: MERMAID_THEME[theme], id: item.id },
             );
-            const normalized = svg
-              .replace(/<br>/g, '<br/>')
-              .replace(/style="max-width: [\d.]+px;"/, '');
+            const normalized = svg.replace(/<br>/g, '<br/>').replace(/style="max-width: [\d.]+px;"/, '');
             write(item.id, theme, normalized);
             size = sizeOf(normalized);
           }
           manifest[item.id] = { id: item.id, source: item.source, engine: 'mermaid', hash: item.hash, ...size };
           built++;
         } catch (error) {
-          errors.push(`${item.source}: ${error instanceof Error ? error.message.split('\n').slice(0, 4).join(' ') : String(error)}`);
+          errors.push(
+            `${item.source}: ${error instanceof Error ? error.message.split('\n').slice(0, 4).join(' ') : String(error)}`,
+          );
         }
       }
     } finally {
@@ -195,7 +253,9 @@ async function main() {
   }
   mkdirSync(OUT, { recursive: true });
   writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2));
-  console.log(`✓ diagrams: ${Object.keys(manifest).length} total, ${built} rebuilt, ${Object.keys(manifest).length - built} cached`);
+  console.log(
+    `✓ diagrams: ${Object.keys(manifest).length} total, ${built} rebuilt, ${Object.keys(manifest).length - built} cached`,
+  );
 }
 
 function formatD2Error(error: unknown): string {

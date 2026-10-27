@@ -1,0 +1,110 @@
+---
+title: "Event-Driven Architecture: Delivery, Retries and Idempotency"
+description: Why exactly-once delivery is the wrong goal, and how the transactional outbox, idempotent consumers, ordering keys and retry tiers give you effectively-once effects instead.
+date: 2026-10-21
+tags: [event-driven, messaging, idempotency, reliability, distributed-systems]
+series: Architecture fundamentals
+seriesOrder: 3
+provenance: illustrative
+---
+
+Moving from synchronous calls to events removes temporal coupling — services no longer need each other
+to be up at the same time. In exchange, every message can now be **lost, duplicated, delayed or
+reordered**. Reliable event-driven systems are not the ones that prevent those outcomes; they are the
+ones in which those outcomes are harmless.
+
+## Delivery semantics, honestly
+
+| Guarantee | What it really means | Typical cost |
+| --- | --- | --- |
+| At-most-once | May lose messages, never duplicates them | Lost business events |
+| At-least-once | Never loses messages, may duplicate them | Consumers must be idempotent |
+| "Exactly-once" | Usually: exactly-once *within one broker's transaction scope* | Vendor-specific; ends at side effects |
+
+The effect you care about — a card charged once, a parcel shipped once — happens **outside** the
+broker. So the practical target is **at-least-once delivery with idempotent effects**: effectively-once.
+
+## Step 1: never lose the event (transactional outbox)
+
+Writing to the database and then publishing to a broker are two operations that can fail
+independently. The outbox makes them one:
+
+<Mermaid
+  src="articles/diagrams/outbox-sequence"
+  title="Transactional outbox and idempotent consumer"
+  description="The API writes the order and an outbox row in one transaction. A relay publishes outbox rows and marks them published; a crash between those steps re-publishes. The consumer inserts each event id into an inbox with a unique key, so a duplicate is acknowledged without repeating the side effect."
+/>
+
+Note the deliberate consequence: a crash between *publish* and *mark as published* re-publishes the
+event. The outbox converts "maybe lost" into "maybe duplicated" — a trade you want, because duplicates
+can be made harmless and losses cannot be undone.
+
+## Step 2: make duplicates harmless (idempotent consumers)
+
+<ADR
+  id="EX-ADR-020"
+  title="Consumers record processed message ids in an inbox table"
+  status="accepted"
+  date="2026-10-21"
+  context="Messages may be delivered more than once by the relay, the broker or after a consumer timeout. Billing must never charge twice."
+  decision="Each consumer inserts the message id into an inbox table with a unique key in the same transaction as its side effect. A conflict means the message was already processed; it is acknowledged without repeating the effect. External calls carry an idempotency key derived from the message id."
+  alternatives={[
+    { option: "Natural idempotency only", summary: "Make every operation an upsert.", rejectedBecause: "Charging a card or sending an e-mail is not naturally idempotent." }
+  ]}
+  consequences={{
+    positive: ["Retries and replays are always safe", "Works with any broker"],
+    negative: ["One extra write per message", "Inbox retention must exceed the redelivery window"]
+  }}
+/>
+
+## Step 3: order only where it matters
+
+Global ordering serialises the whole system. Most domains need order **per aggregate** — "cancel"
+after "place" for the same order — and nothing across aggregates. Partition by the aggregate id and
+each order's events land on one partition, consumed in sequence. Carry an aggregate **version** in
+every event so a consumer can detect, and park, an event that arrives early after a replay.
+
+## Step 4: fail without blocking (retries and dead letters)
+
+<Tradeoffs
+  title="What to do when processing fails"
+  criteria="Other messages keep flowing; no silent loss; no retry storms."
+  options={[
+    { name: "Retry in place", benefits: ["Simple", "Preserves order"], drawbacks: ["One bad message blocks its partition"], chooseWhen: "Strict ordering matters more than throughput — rarely." },
+    { name: "Drop after N attempts", benefits: ["Never blocks"], drawbacks: ["Silent data loss"], chooseWhen: "Telemetry you can afford to lose." },
+    { name: "Delayed retry tiers + dead-letter + replay", benefits: ["Partition keeps flowing", "Failures visible with context", "Safe replay (idempotent)"], drawbacks: ["Retries can reorder an aggregate's events — use versions"], chooseWhen: "Business events.", selected: true }
+  ]}
+/>
+
+Classify errors first: **transient** (timeouts, 429s, a dependency restarting) go through delayed retry
+topics with jitter — 1 minute, 10 minutes, 1 hour. **Permanent** errors (invalid data, a bug) go
+straight to a dead-letter topic with the error and attempt history. And when a dependency is down for
+hours, a **circuit breaker** should pause consumption rather than churn messages through retries.
+
+<Callout type="warning" title="A dead-letter queue nobody watches is a data-loss queue">
+  Give every DLQ an owner, an alert on size and age, and a replay tool that preserves original message
+  ids — so replays are safe by construction.
+</Callout>
+
+## Step 5: evolve without breaking consumers
+
+Producers and consumers deploy independently, so the **schema is the contract**. Register schemas
+and enforce compatibility in CI: additive, optional fields are fine; renames and type changes need a
+new event type or version and a migration period.
+
+## See it as a system
+
+The full reference design — outbox relay, partitioned log, inbox consumers, retry tiers, DLQ and
+replay — with failure modes and test strategy is in the
+[event-driven processing case study](/architecture/event-driven-processing/). Explore it here:
+
+<ArchitectureDiagram system="event-driven-processing" />
+
+## Checklist
+
+- Is every state change published through an outbox (or CDC)?
+- Is every consumer idempotent — including calls to external APIs?
+- Which key gives ordering where the business needs it?
+- Are transient and permanent failures handled differently?
+- Does every DLQ have an owner, an alert and a replay path?
+- Are outbox age and consumer lag on a dashboard?

@@ -1,0 +1,48 @@
+# C4 Level 2 — Containers: Event-driven order processing (illustrative reference architecture)
+direction: right
+
+classes: {
+  container: {style.border-radius: 8}
+  db: {shape: cylinder}
+  queue: {shape: queue}
+  external: {style.stroke-dash: 4; style.border-radius: 8}
+}
+
+orders: "Order service" {
+  api: "Order API\n[.NET]" {class: container}
+  db: "Orders DB\n[PostgreSQL]\norders + outbox" {class: db}
+  relay: "Outbox relay\n[publisher]" {class: container}
+  api -> db: "One transaction:\nstate + outbox row"
+  relay -> db: Poll / logical decoding
+}
+
+log: "Event log\n[partitioned, keyed by order id]" {class: queue}
+registry: "Schema registry\n[compatibility rules]" {class: container}
+
+billing: "Billing consumer" {
+  worker: "Billing worker" {class: container}
+  db: "Billing DB\n+ inbox table" {class: db}
+  worker -> db: "Inbox insert +\nside effect (1 tx)"
+}
+
+fulfil: "Fulfilment consumer" {
+  worker: "Fulfilment worker" {class: container}
+  db: "Fulfilment DB\n+ inbox table" {class: db}
+  worker -> db
+}
+
+retry: "Retry topics\n[delayed: 1 m, 10 m, 1 h]" {class: queue}
+dlq: "Dead-letter topic" {class: queue}
+replay: "Replay & DLQ tool\n[operator UI]" {class: container}
+pay: "Payment provider\n[External, idempotency keys]" {class: external}
+
+orders.relay -> log: "Publish (key = order id)"
+orders.relay -> registry: Validate schema
+log -> billing.worker: Consumer group
+log -> fulfil.worker: Consumer group
+billing.worker -> pay: "Charge (Idempotency-Key)"
+billing.worker -> retry: Transient failure {style.stroke-dash: 4}
+retry -> billing.worker: Redeliver after delay {style.stroke-dash: 4}
+billing.worker -> dlq: Poison / retries exhausted {style.stroke-dash: 4}
+replay -> dlq: Inspect
+replay -> log: Re-publish fixed events

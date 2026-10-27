@@ -15,7 +15,11 @@ export const metadata = pageMetadata({
 export default function TestimonialsPage() {
   return (
     <>
-      <PageHeader crumbs={[{ name: 'Testimonials', path: '/testimonials/' }]} eyebrow="In their words" title="Testimonials" />
+      <PageHeader
+        crumbs={[{ name: 'Testimonials', path: '/testimonials/' }]}
+        eyebrow="In their words"
+        title="Testimonials"
+      />
       <div className="container-page py-12">
         {testimonials.length ? (
           <ul className="grid gap-6 md:grid-cols-2">
@@ -28,7 +32,9 @@ export default function TestimonialsPage() {
                     {t.source ? (
                       <>
                         {' · '}
-                        <a href={t.source} className="link" target="_blank" rel="noopener noreferrer">source<span className="sr-only"> (opens in a new tab)</span></a>
+                        <a href={t.source} className="link" target="_blank" rel="noopener noreferrer">
+                          source<span className="sr-only"> (opens in a new tab)</span>
+                        </a>
                       </>
                     ) : null}
                   </figcaption>
@@ -40,13 +46,20 @@ export default function TestimonialsPage() {
           <div className="max-w-2xl">
             <p className="text-lg text-muted">No testimonials have been published yet.</p>
             <p className="mt-3 text-muted">
-              Testimonials appear here only with the author&apos;s explicit approval of the exact wording. In the meantime, the{' '}
-              <Link href="/architecture/" className="link">architecture case studies</Link> show how I work.
+              Testimonials appear here only with the author&apos;s explicit approval of the exact wording. In the
+              meantime, the{' '}
+              <Link href="/architecture/" className="link">
+                architecture case studies
+              </Link>{' '}
+              show how I work.
             </p>
             {SHOW_PLACEHOLDERS ? (
-              <p className="mt-6 rounded-md border border-dashed border-highlight/60 bg-highlight/10 p-4 font-mono text-xs text-highlight" data-placeholder>
-                Development note: add approved entries to src/data/testimonials.ts (validated by testimonialSchema). The page joins
-                navigation and the sitemap automatically once the list is non-empty.
+              <p
+                className="mt-6 rounded-md border border-dashed border-highlight/60 bg-highlight/10 p-4 font-mono text-xs text-highlight"
+                data-placeholder
+              >
+                Development note: add approved entries to src/data/testimonials.ts (validated by testimonialSchema). The
+                page joins navigation and the sitemap automatically once the list is non-empty.
               </p>
             ) : null}
           </div>

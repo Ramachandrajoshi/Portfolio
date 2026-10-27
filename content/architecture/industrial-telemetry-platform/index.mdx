@@ -1,0 +1,254 @@
+---
+title: Industrial Telemetry Platform — Edge to Time-Series
+summary: >-
+  Connecting plant equipment that is often offline to a multi-tenant cloud platform: store-and-forward
+  edge gateways, MQTT ingestion with idempotent identities, a stateful alarm engine and tiered
+  TimescaleDB storage.
+domain: Industrial IoT & data platforms
+order: 2
+provenance: illustrative
+status: complete
+date: 2026-09-28
+tags: [iot, mqtt, timescaledb, edge-computing, event-driven, multi-tenancy]
+problem: >-
+  How do you collect trustworthy telemetry from machines on unreliable networks — without losing data
+  during outages, duplicating it afterwards, or drowning operators in nuisance alarms?
+qualityAttributes:
+  - attribute: Data completeness
+    scenario: A site loses its uplink for 8 hours, then reconnects.
+    measure: 100 % of readings produced during the outage are stored exactly once (by message identity) after replay.
+    basis: requirement
+  - attribute: Freshness
+    scenario: Steady state, normal load.
+    measure: p95 sensor-to-dashboard latency under 5 s; under 30 s while any site is replaying a backlog.
+    basis: target
+  - attribute: Alarm quality
+    scenario: A noisy signal oscillates around its threshold.
+    measure: At most one notification per alarm episode; flapping rules visible on an alarm-rate dashboard.
+    basis: requirement
+  - attribute: Ingestion capacity
+    scenario: Design load of 200 sites × 2,000 tags at 1 Hz, plus one site replaying at 5× its live rate.
+    measure: Ingestion lag returns below 10 s within 15 minutes of reconnection.
+    basis: design-assumption
+  - attribute: Tenant isolation
+    scenario: A device certificate from tenant A publishes to a topic of tenant B.
+    measure: Message rejected at the broker by topic ACL and audited; never reaches ingestion.
+    basis: requirement
+  - attribute: Cost efficiency
+    scenario: Raw data accumulates for a year.
+    measure: Storage growth bounded by compression and tiered retention (raw 30 days, 1-minute aggregates 2 years, archive in object storage).
+    basis: design-assumption
+diagrams:
+  - level: context
+    src: architecture/industrial-telemetry-platform/diagrams/c4-context
+    title: System context
+    description: Plant equipment sends telemetry through edge gateways to the platform. Operators watch live state and acknowledge alarms; reliability engineers analyse trends and tune rules. The platform sends notifications and creates maintenance work orders in an external CMMS.
+  - level: container
+    src: architecture/industrial-telemetry-platform/diagrams/c4-container
+    title: Containers
+    description: At each plant site an edge gateway polls PLCs and buffers readings, publishing over MQTT to a broker cluster. An ingestion service validates and de-duplicates readings into an event stream consumed by an alarm engine and a storage writer, which writes TimescaleDB, object storage and a Redis latest-value cache. A query API serves the operations UI.
+---
+
+<Callout type="important" title="About this case study">
+  An **illustrative reference architecture** for industrial telemetry. It reflects problems typical of
+  connected-equipment platforms, does not describe any specific employer, client or plant, and every
+  throughput figure is a **design assumption** used to reason about capacity — not a measurement.
+</Callout>
+
+## 1. Context and business problem
+
+A manufacturer operates plants with equipment from many vendors and eras. Engineers want trend data
+for root-cause analysis, operators want live state and trustworthy alarms, and maintenance wants
+work orders raised from conditions rather than calendars. Today data is trapped in individual
+machines and historians on site.
+
+The networks are the hard part: plant uplinks drop for minutes to days, bandwidth is limited, and
+equipment cannot be changed. The platform must treat **disconnection, duplication and reordering as
+the normal case**, not as exceptions.
+
+## 2. Requirements and constraints
+
+| Constraint | Consequence for the design |
+| --- | --- |
+| Uplinks are unreliable; outages of hours happen. | Buffering and identity must live at the edge. |
+| Equipment cannot be modified; protocols vary. | A gateway adapts OPC UA / Modbus to one northbound format. |
+| Several customers (tenants) share the platform. | Tenant identity must be bound to device credentials, not payloads. |
+| Analysts know SQL; the team operates PostgreSQL. | Prefer a SQL time-series store with relational joins. |
+| Alarm fatigue is already a problem on site. | Alarm logic must be stateful, not threshold-per-sample. |
+
+## 3. Functional and non-functional requirements
+
+**Functional**
+
+1. Collect readings from heterogeneous devices with source timestamps.
+2. Show live values and trends from seconds to years.
+3. Evaluate alarm rules, notify on-call staff, support acknowledge and shelve.
+4. Raise maintenance work orders from alarm conditions.
+5. Keep an immutable raw archive for audit and reprocessing.
+
+**Non-functional** — measurable scenarios:
+
+<QualityAttributes />
+
+## 4. Quality attributes and acceptance criteria
+
+Completeness and freshness conflict during recovery: replaying a backlog as fast as possible delays
+live data, while protecting live data slows recovery. The design makes that trade-off explicit with
+a **per-site replay rate** and live-data priority, and measures both sides (freshness p95 during
+replay, time-to-drain).
+
+## 5. Architecture and system boundaries
+
+Three boundaries organise the system:
+
+- **The site boundary.** Everything south of the edge gateway is the plant's network; the gateway
+  makes only outbound connections and owns buffering, normalisation and message identity.
+- **The ingestion boundary.** Untrusted device traffic becomes trusted, validated, de-duplicated
+  events in exactly one place.
+- **The storage boundary.** Consumers read from a durable event stream, so storage, alarming and
+  future consumers evolve independently and can be rebuilt by replay.
+
+## 6. Context, container and component views
+
+<C4Views />
+
+### Explore the system
+
+<ArchitectureDiagram system="industrial-telemetry-platform" />
+
+## 7. Important design decisions
+
+<ADR id="IOT-ADR-001" />
+
+The message identity is what makes "at-least-once" safe. A sketch of the envelope the gateway
+publishes:
+
+```json
+{
+  "id": "site-17/plc-3/temp.zone2#18733042",
+  "tenant": "t-042",
+  "tag": "temp.zone2",
+  "value": 412.6,
+  "unit": "degC",
+  "sourceTime": "2026-09-28T10:15:03.250Z",
+  "seq": 18733042,
+  "quality": "good"
+}
+```
+
+Topic structure binds identity to authorisation: `t/{tenant}/s/{site}/d/{device}/telemetry`. The broker
+ACL allows a certificate to publish only under its own tenant, site and device.
+
+<ADR id="IOT-ADR-002" />
+
+<ADR id="IOT-ADR-003" />
+
+## 8. Alternatives considered
+
+<Tradeoffs
+  title="Delivery guarantee from edge to cloud"
+  criteria="No loss during outages, correctness after replay, cost on constrained links."
+  options={[
+    { name: "QoS 0, no buffering", benefits: ["Simplest", "Lowest overhead"], drawbacks: ["Loses data during every outage"], chooseWhen: "Data is purely live-view and loss is acceptable." },
+    { name: "QoS 2 end to end", benefits: ["Exactly-once between client and broker"], drawbacks: ["Double handshakes on weak links", "Guarantee ends at the broker"], chooseWhen: "Rare, high-value commands rather than telemetry streams." },
+    { name: "Edge buffer + QoS 1 + idempotent ids", benefits: ["No loss within buffer horizon", "Duplicates harmless", "Works across every hop"], drawbacks: ["Edge disk to size and monitor", "Consumers handle late data"], chooseWhen: "Telemetry from intermittently connected sites.", selected: true }
+  ]}
+/>
+
+## 9. Trade-offs and rejected alternatives
+
+- **Late data versus compression.** TimescaleDB compresses older chunks; inserting into them is
+  costlier. Late readings beyond the compression horizon go through a correction job rather than the
+  hot path — accepted complexity in exchange for storage efficiency.
+- **Stateful alarm engine versus simplicity.** State must be partitioned and recovered; accepted,
+  because stateless thresholds are what caused alarm fatigue.
+- **One event stream versus direct writes.** An extra component to operate; accepted, because replay
+  and independent consumers are what make the system evolvable.
+- Rejected: **alarming inside the database** (couples alarm latency to write batching), and
+  **per-tenant broker clusters by default** (operational cost; kept as an option for tenants that need it).
+
+## 10. Security and trust boundaries
+
+- **Device identity:** per-device X.509 certificates, provisioned through a registry; mTLS to the broker.
+- **Authorisation by topic:** the certificate's identity determines which tenant/site/device topics it
+  may publish to; tenant ids inside payloads are ignored for authorisation.
+- **Outbound-only edge:** gateways never accept inbound connections from the internet.
+- **Supply chain:** gateway agents are signed; updates are staged per site with rollback.
+- **Data at rest:** encrypted storage; tenant-scoped keys for the object-storage archive.
+- **Least privilege:** the storage writer has insert-only rights; the API has read-only rights.
+
+## 11. Failure modes and recovery behaviour
+
+<Tradeoffs
+  title="Failure modes and their containment"
+  columns={{ option: "Failure", benefits: "Containment", drawbacks: "Impact", chooseWhen: "Detection & recovery" }}
+  options={[
+    { name: "Site uplink outage", benefits: ["Edge buffer keeps data", "Other sites unaffected"], drawbacks: ["Live view for that site goes stale"], chooseWhen: "Detection: last-seen per gateway. Recovery: rate-limited replay; drain time tracked." },
+    { name: "Ingestion overload after reconnect", benefits: ["Stream absorbs bursts", "Live topics prioritised"], drawbacks: ["Freshness degrades temporarily"], chooseWhen: "Detection: consumer lag. Recovery: autoscale on lag; replay rate limits." },
+    { name: "Database unavailable", benefits: ["Writer stops committing offsets — no loss"], drawbacks: ["Trends stale; live values continue from Redis"], chooseWhen: "Detection: write errors. Recovery: resume from stream offsets." },
+    { name: "Alarm engine crash", benefits: ["State rebuilt from persisted alarm events"], drawbacks: ["Seconds of evaluation delay"], chooseWhen: "Detection: heartbeat. Recovery: restart; idempotent notifications prevent re-paging." }
+  ]}
+/>
+
+## 12. Scalability and performance reasoning
+
+<Callout type="assumption" title="Design assumptions — not measurements">
+  200 sites × 2,000 tags at 1 Hz; ~120 bytes per reading on the wire; one site replaying an 8-hour
+  backlog at 5× its live rate. These inputs exist to size the design and to define the load test.
+</Callout>
+
+**Steady state:**
+
+- 200 × 2,000 × 1 Hz = **400,000 readings/s** across the fleet.
+- At ~120 bytes each, ≈ **48 MB/s** inbound before compression — ingestion is a throughput problem, so
+  readings are batched per device (e.g. one MQTT message per device per second containing all changed
+  tags), cutting message count by orders of magnitude.
+
+**Recovery:**
+
+- One site's 8-hour backlog: 2,000 tags × 28,800 s ≈ **57.6 M readings**.
+- Replaying at 5× its live rate (10,000 readings/s) drains in ≈ **96 minutes** — so freshness during
+  replay depends on live-data priority, not on the backlog finishing quickly.
+
+**Storage:**
+
+- 400k readings/s ≈ 34.6 billion rows/day raw. Raw data is therefore kept briefly and compressed;
+  dashboards read **continuous aggregates** (1-minute: 1/60 of the rows; 1-hour: 1/3,600).
+
+These numbers say what to test, and where the design is most sensitive: messages per second at the
+broker (reduced by batching) and rows per second at the database (reduced by COPY batches and
+aggregates).
+
+## 13. Observability and operational considerations
+
+- **Edge health:** buffer depth, oldest unsent reading, reconnect count and clock drift per gateway.
+- **Pipeline health:** consumer lag per group, rejected/quarantined message rate by reason, duplicate
+  rate (a rising duplicate rate is an early sign of flapping connectivity).
+- **Data health:** per-site completeness (expected vs received readings per hour), stale-tag detection.
+- **Alarm health:** alarms per operator per hour, flapping and chattering alarms, standing alarms.
+- **Storage health:** compression ratio, aggregate refresh lag, chunk count.
+
+## 14. Testing and validation strategy
+
+| Risk | Test |
+| --- | --- |
+| Loss or duplication on reconnect | Network-partition test with a gateway simulator: drop the uplink for N hours, reconnect, assert exactly-once storage by identity and per-hour completeness. |
+| Ingestion capacity | Load test at the design load plus one replaying site; verify the lag-recovery criterion. |
+| Alarm behaviour | Property-based tests on the rule engine with noisy synthetic signals; assert one notification per episode. |
+| Late-data correctness | Inject readings older than the compression horizon; verify the correction path and aggregate refresh. |
+| Tenant isolation | Cross-tenant publish attempts with valid certificates for another tenant; verify ACL rejection and audit. |
+| Gateway resilience | Kill the agent mid-write; verify the disk queue recovers without corruption. |
+
+## 15. Outcomes and lessons learned
+
+**Outcomes.** As an illustrative design, it reports no production results. Success would be shown by
+the partition test (no loss, no duplicates), the lag-recovery criterion under the design load, and
+alarm-rate metrics within agreed limits after rollout.
+
+**Lessons that generalise:**
+
+- *Put identity where the data is born.* De-duplication is only possible if the producer stamps a
+  stable identity before the first network hop.
+- *Treat recovery as a workload.* Backlog replay is a predictable load spike; design and test for it.
+- *Alarms are a product, not a query.* Operators judge the whole platform by alarm quality.
+- *Aggregate early, keep raw cheaply.* Dashboards should never scan raw telemetry.

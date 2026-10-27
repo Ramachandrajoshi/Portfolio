@@ -26,10 +26,18 @@ function detectWebGL(): boolean {
   return webglSupport;
 }
 
-/** Data-saver users and very constrained devices must opt in to the 3D download. */
+/**
+ * Auto-start only where it is cheap and welcome: a fine pointer (desktop/laptop), a
+ * reasonably wide viewport, no data-saver and enough memory. Phones and tablets get the
+ * same city one tap away — saving battery and data, and keeping mobile LCP/TBT clean.
+ */
 function prefersLightweight(): boolean {
   const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number };
-  return Boolean(nav.connection?.saveData) || (nav.deviceMemory !== undefined && nav.deviceMemory < 2);
+  return (
+    Boolean(nav.connection?.saveData) ||
+    (nav.deviceMemory !== undefined && nav.deviceMemory < 4) ||
+    !window.matchMedia('(pointer: fine) and (min-width: 768px)').matches
+  );
 }
 
 const noopSubscribe = () => () => {};
@@ -65,7 +73,10 @@ export function HeroStage({ poster, children }: { poster: ReactNode; children: R
   useEffect(() => {
     if (phase !== 'poster' || !visible || !canAutoStart || prefersLightweight()) return;
     // Start after the page is interactive so the 3D download never competes with first paint.
-    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
     if (w.requestIdleCallback) {
       const id = w.requestIdleCallback(() => setPhase('loading'), { timeout: 2500 });
       return () => w.cancelIdleCallback?.(id);
@@ -109,11 +120,19 @@ export function HeroStage({ poster, children }: { poster: ReactNode; children: R
       data-hero-phase={phase}
     >
       <div className="absolute inset-0 -z-20">{poster}</div>
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-bg via-bg/80 to-transparent lg:via-bg/55" />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-bg via-bg/80 to-transparent lg:via-bg/55"
+      />
 
       {running ? (
         // No z-index here: the HUD inside must stack above the text scrim and overlay.
-        <div className={cx('absolute inset-0 transition-opacity duration-700', phase === 'ready' ? 'opacity-100' : 'opacity-0')}>
+        <div
+          className={cx(
+            'absolute inset-0 transition-opacity duration-700',
+            phase === 'ready' ? 'opacity-100' : 'opacity-0',
+          )}
+        >
           <ErrorBoundary fallback={null} onError={(e) => fail(e.message || 'The 3D scene could not start.')}>
             <Suspense fallback={null}>
               <CityExperience
@@ -131,7 +150,10 @@ export function HeroStage({ poster, children }: { poster: ReactNode; children: R
 
       {/* Scrim keeps text readable over the live scene. */}
       {phase === 'ready' && !collapsed ? (
-        <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-[5] w-full bg-gradient-to-r from-bg/90 via-bg/60 to-transparent lg:w-3/5" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 z-[5] w-full bg-gradient-to-r from-bg/90 via-bg/60 to-transparent lg:w-3/5"
+        />
       ) : null}
 
       <div
@@ -156,7 +178,9 @@ export function HeroStage({ poster, children }: { poster: ReactNode; children: R
               ) : null}
               {phase === 'poster' && webgl && (reducedMotion || classic) ? (
                 <span className="text-muted">
-                  {classic ? 'Classic mode is on — the 3D city is not loaded.' : 'Reduced motion is on, so the 3D city waits for you.'}
+                  {classic
+                    ? 'Classic mode is on — the 3D city is not loaded.'
+                    : 'Reduced motion is on, so the 3D city waits for you.'}
                 </span>
               ) : null}
               {phase === 'poster' && !webgl ? (
@@ -172,10 +196,19 @@ export function HeroStage({ poster, children }: { poster: ReactNode; children: R
               {phase === 'ready' ? (
                 <>
                   <span className="text-muted">Click the city, then use WASD to explore.</span>
-                  <button type="button" onClick={() => setIntroHidden(true)} className="text-accent underline-offset-4 hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => setIntroHidden(true)}
+                    className="text-accent underline-offset-4 hover:underline"
+                  >
                     Hide intro
                   </button>
-                  <button type="button" onClick={stop} className="text-muted underline-offset-4 hover:text-fg hover:underline" data-testid="exit-city">
+                  <button
+                    type="button"
+                    onClick={stop}
+                    className="text-muted underline-offset-4 hover:text-fg hover:underline"
+                    data-testid="exit-city"
+                  >
                     Exit 3D
                   </button>
                 </>
@@ -183,7 +216,9 @@ export function HeroStage({ poster, children }: { poster: ReactNode; children: R
               {phase === 'failed' ? (
                 <span role="status" className="text-muted" data-testid="webgl-failed">
                   The 3D city couldn&apos;t start ({failure}). Everything is still available through the links above.{' '}
-                  <button type="button" onClick={start} className="text-accent underline">Try again</button>
+                  <button type="button" onClick={start} className="text-accent underline">
+                    Try again
+                  </button>
                 </span>
               ) : null}
             </div>
@@ -198,7 +233,7 @@ export function HeroStage({ poster, children }: { poster: ReactNode; children: R
             setIntroHidden(false);
             setCityActive(false);
           }}
-          className="absolute left-3 top-3 z-20 rounded-md border border-border bg-bg-elevated/85 px-3 py-1.5 text-sm backdrop-blur hover:border-accent"
+          className="absolute top-3 left-3 z-20 rounded-md border border-border bg-bg-elevated/85 px-3 py-1.5 text-sm backdrop-blur hover:border-accent"
         >
           Show intro
         </button>

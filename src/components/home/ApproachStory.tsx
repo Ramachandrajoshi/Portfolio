@@ -59,7 +59,12 @@ export function ApproachStory({ steps }: { steps: StoryStep[] }) {
             gsap.fromTo(
               stepEl,
               { opacity: 0.35, y: 28 },
-              { opacity: 1, y: 0, ease: 'power2.out', scrollTrigger: { trigger: stepEl, start: 'top 90%', end: 'top 60%', scrub: 0.4 } },
+              {
+                opacity: 1,
+                y: 0,
+                ease: 'power2.out',
+                scrollTrigger: { trigger: stepEl, start: 'top 90%', end: 'top 60%', scrub: 0.4 },
+              },
             );
           });
         }, el);
@@ -77,21 +82,56 @@ export function ApproachStory({ steps }: { steps: StoryStep[] }) {
   }, [reducedMotion]);
 
   return (
-    <div ref={root} className="grid gap-10 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-16" data-story={enhanced ? 'enhanced' : 'static'}>
+    <div
+      ref={root}
+      className="grid gap-10 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-16"
+      data-story={enhanced ? 'enhanced' : 'static'}
+    >
       <div className="hidden lg:block">
         <div className="sticky top-28">
           <svg viewBox="0 0 120 380" className="h-[22rem] w-auto" aria-hidden>
-            <path d={`M60 ${NODE_Y[0]} L60 ${NODE_Y[4]}`} stroke="var(--color-border-strong)" strokeWidth="2" fill="none" />
-            <path data-story-path d={`M60 ${NODE_Y[0]} L60 ${NODE_Y[4]}`} stroke="var(--color-accent)" strokeWidth="3" fill="none" />
+            <path
+              d={`M60 ${NODE_Y[0]} L60 ${NODE_Y[4]}`}
+              stroke="var(--color-border-strong)"
+              strokeWidth="2"
+              fill="none"
+            />
+            <path
+              data-story-path
+              d={`M60 ${NODE_Y[0]} L60 ${NODE_Y[4]}`}
+              stroke="var(--color-accent)"
+              strokeWidth="3"
+              fill="none"
+            />
             {steps.map((step, i) => {
               const on = !enhanced || i <= active;
               return (
                 <g key={step.id}>
-                  <circle cx="60" cy={NODE_Y[i]} r={i === active && enhanced ? 13 : 9} fill="var(--color-bg)" stroke={on ? 'var(--color-accent)' : 'var(--color-border-strong)'} strokeWidth="2.5" style={{ transition: 'r var(--duration-base), stroke var(--duration-base)' }} />
-                  <text x="60" y={(NODE_Y[i] ?? 0) + 4} textAnchor="middle" className="fill-[var(--color-text)] font-mono text-[10px]">
+                  <circle
+                    cx="60"
+                    cy={NODE_Y[i]}
+                    r={i === active && enhanced ? 13 : 9}
+                    fill="var(--color-bg)"
+                    stroke={on ? 'var(--color-accent)' : 'var(--color-border-strong)'}
+                    strokeWidth="2.5"
+                    style={{ transition: 'r var(--duration-base), stroke var(--duration-base)' }}
+                  />
+                  <text
+                    x="60"
+                    y={(NODE_Y[i] ?? 0) + 4}
+                    textAnchor="middle"
+                    className="fill-[var(--color-text)] font-mono text-[10px]"
+                  >
                     {String(i + 1).padStart(2, '0')}
                   </text>
-                  <text x="82" y={(NODE_Y[i] ?? 0) + 4} className={cx('font-mono text-[10px] uppercase tracking-wider', on ? 'fill-[var(--color-accent)]' : 'fill-[var(--color-text-subtle)]')}>
+                  <text
+                    x="82"
+                    y={(NODE_Y[i] ?? 0) + 4}
+                    className={cx(
+                      'font-mono text-[10px] tracking-wider uppercase',
+                      on ? 'fill-[var(--color-accent)]' : 'fill-[var(--color-text-subtle)]',
+                    )}
+                  >
                     {step.label}
                   </text>
                 </g>
@@ -102,7 +142,14 @@ export function ApproachStory({ steps }: { steps: StoryStep[] }) {
       </div>
       <ol className="space-y-8 lg:space-y-[18vh] lg:py-[6vh]">
         {steps.map((step, i) => (
-          <li key={step.id} data-step={i} className={cx('card p-6 transition-[border-color,box-shadow] duration-300 sm:p-8', enhanced && i === active && 'border-accent/70 shadow-glow')}>
+          <li
+            key={step.id}
+            data-step={i}
+            className={cx(
+              'card p-6 transition-[border-color,box-shadow] duration-300 sm:p-8',
+              enhanced && i === active && 'border-accent/70 shadow-glow',
+            )}
+          >
             <p className="eyebrow">
               {String(i + 1).padStart(2, '0')} · {step.label}
             </p>

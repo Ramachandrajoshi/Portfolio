@@ -25,9 +25,9 @@ export default function ArchitectureIndexPage() {
         title="How I design systems"
         lead={
           <p>
-            Each case study starts from context and constraints, makes its quality attributes measurable, records decisions as
-            ADRs, and is honest about what it gives up. Numbers are labelled as requirements, targets or design assumptions —
-            never presented as results without evidence.
+            Each case study starts from context and constraints, makes its quality attributes measurable, records
+            decisions as ADRs, and is honest about what it gives up. Numbers are labelled as requirements, targets or
+            design assumptions — never presented as results without evidence.
           </p>
         }
       />
@@ -47,10 +47,11 @@ export default function ArchitectureIndexPage() {
               </h2>
               <p className="mt-1 text-sm text-accent">{cs.domain}</p>
               <p className="mt-3 text-muted">{cs.summary}</p>
-              <p className="mt-4 border-l-2 border-tertiary pl-3 text-sm italic text-muted">{cs.problem}</p>
+              <p className="mt-4 border-l-2 border-tertiary pl-3 text-sm text-muted italic">{cs.problem}</p>
               <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-6 text-sm text-muted">
                 <span>
-                  {adrsFor(cs.slug).length} ADRs · {cs.qualityAttributes.length} quality scenarios · {cs.metadata.readingTime} min read
+                  {adrsFor(cs.slug).length} ADRs · {cs.qualityAttributes.length} quality scenarios ·{' '}
+                  {cs.metadata.readingTime} min read
                 </span>
                 <span className="inline-flex items-center gap-1 text-accent">
                   Read case study <ArrowRightIcon />
@@ -59,14 +60,26 @@ export default function ArchitectureIndexPage() {
             </li>
           ))}
         </ol>
-        <section className="mt-16 grid gap-8 rounded-xl border border-border bg-surface-2/50 p-6 md:grid-cols-3 md:p-8" aria-labelledby="method">
+        <section
+          className="mt-16 grid gap-8 rounded-xl border border-border bg-surface-2/50 p-6 md:grid-cols-3 md:p-8"
+          aria-labelledby="method"
+        >
           <h2 id="method" className="font-display text-xl font-semibold md:col-span-3">
             The structure every case study follows
           </h2>
           {[
-            ['Understand', 'Context and business problem · requirements and constraints · functional and non-functional requirements · measurable quality attributes.'],
-            ['Decide', 'System boundaries · C4 context/container/component views · design decisions as ADRs · alternatives · explicit trade-offs.'],
-            ['Prove', 'Security and trust boundaries · failure modes and recovery · capacity reasoning · observability · test and validation strategy · lessons.'],
+            [
+              'Understand',
+              'Context and business problem · requirements and constraints · functional and non-functional requirements · measurable quality attributes.',
+            ],
+            [
+              'Decide',
+              'System boundaries · C4 context/container/component views · design decisions as ADRs · alternatives · explicit trade-offs.',
+            ],
+            [
+              'Prove',
+              'Security and trust boundaries · failure modes and recovery · capacity reasoning · observability · test and validation strategy · lessons.',
+            ],
           ].map(([title, body]) => (
             <div key={title}>
               <p className="eyebrow">{title}</p>

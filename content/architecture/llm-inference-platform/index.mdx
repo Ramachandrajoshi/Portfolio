@@ -1,0 +1,270 @@
+---
+title: Local LLM Inference Under GPU-Memory Constraints
+summary: >-
+  Serving LLMs on a fixed, local GPU budget: sizing by KV-cache capacity, admission control by token
+  budget, quantisation behind a quality gate, and replicas instead of tensor parallelism over PCIe.
+domain: AI & inference systems
+order: 3
+provenance: illustrative
+status: complete
+date: 2026-10-05
+tags: [llm, inference, gpu, kv-cache, quantization, capacity-planning]
+problem: >-
+  With two 24 GB GPUs and no option to buy more this year, how many users can a local LLM platform serve
+  at an acceptable latency — and how do you keep it predictable when demand exceeds capacity?
+qualityAttributes:
+  - attribute: Interactive latency
+    scenario: Interactive class, prompts up to 4k tokens, normal load.
+    measure: p95 time-to-first-token under 1.5 s and p95 inter-token latency under 60 ms.
+    basis: target
+  - attribute: Predictability under overload
+    scenario: Batch traffic doubles while interactive traffic is steady.
+    measure: Interactive p95 latencies stay within target; excess batch work is queued or receives 429 with Retry-After — zero engine preemption storms.
+    basis: requirement
+  - attribute: Quality preservation
+    scenario: A 4-bit quantised artefact is proposed to replace FP16.
+    measure: Within agreed tolerance of the FP16 baseline on every task suite (e.g. ≤ 1 point extraction F1, ≥ 99 % valid tool-call JSON).
+    basis: requirement
+  - attribute: Capacity
+    scenario: Mixed traffic with an average of ~3k tokens of context per active sequence.
+    measure: At least 24 concurrently active sequences across the node (theoretical estimate — to be validated by load test).
+    basis: design-assumption
+  - attribute: Data protection
+    scenario: Prompts contain confidential business data.
+    measure: No prompt or completion content leaves the node or appears in logs or metrics by default.
+    basis: requirement
+diagrams:
+  - level: container
+    src: architecture/llm-inference-platform/diagrams/c4-container
+    title: Containers
+    description: Internal applications and an agent runtime call an OpenAI-compatible inference gateway that enforces token quotas and records usage. A scheduler admits requests by KV-cache budget and routes them to one of two independent model servers, one per 24 GB GPU. Engines load quantised weights from a model registry; an evaluation harness publishes quality reports; metrics capture TTFT, inter-token latency and KV utilisation.
+  - level: sequence
+    src: architecture/llm-inference-platform/diagrams/request-lifecycle
+    title: Request lifecycle
+    description: The client streams a chat request to the gateway, which authenticates and checks quotas, then asks the scheduler to admit it with an estimated token demand. If KV budget is available the model server prefills the prompt, streams the first token, then decodes token by token and releases its KV blocks; otherwise the request is queued by priority class or rejected with 429.
+---
+
+<Callout type="important" title="About this case study">
+  An **illustrative reference architecture**. All capacity figures below are **theoretical estimates
+  from first principles**, labelled as such — they explain the reasoning and define what to measure.
+  They are not benchmark results. Real numbers depend on the engine, kernels, model and traffic, and
+  must come from load tests on the actual hardware.
+</Callout>
+
+## 1. Context and business problem
+
+An organisation wants LLM capabilities — summarisation, extraction, classification and tool-using
+agents — but its data cannot leave its own infrastructure. The available hardware is one server with
+**two 24 GB GPUs** connected over PCIe. Budget for more hardware is a year away.
+
+The question is not "which model is best?" but **"what can this hardware serve, to how many users, at
+what latency — and what happens when demand exceeds it?"**
+
+## 2. Requirements and constraints
+
+| Constraint | Consequence for the design |
+| --- | --- |
+| 2 × 24 GB GPUs, PCIe only | Memory, not compute, is the binding constraint; cross-GPU communication is expensive. |
+| Data must stay on-premises | No hosted fallback; overload must be handled locally and explicitly. |
+| Mixed workloads (interactive, batch, agents) | Priority classes with separate latency objectives and budgets. |
+| Small platform team | Prefer a proven inference engine with continuous batching over custom kernels. |
+| Quality matters for structured outputs | Quantisation must be justified by task-specific evaluation, not generic benchmarks. |
+
+## 3. Functional and non-functional requirements
+
+**Functional**
+
+1. OpenAI-compatible chat and completion APIs with streaming.
+2. Per-tenant quotas and rate limits in **tokens**, plus usage accounting.
+3. Priority classes: interactive, agent, batch.
+4. Versioned model artefacts with promotion based on evaluation reports.
+
+**Non-functional** — measurable scenarios:
+
+<QualityAttributes />
+
+## 4. Quality attributes and acceptance criteria
+
+Latency for LLMs is two numbers, not one:
+
+- **Time to first token (TTFT)** — dominated by queueing and **prefill**, which processes the whole
+  prompt and is largely **compute-bound**.
+- **Inter-token latency (ITL)** — dominated by **decode**, which generates one token per step for every
+  sequence in the batch and is largely **memory-bandwidth-bound**.
+
+They respond to different levers (prompt length versus batch size and weight precision), so they are
+specified and measured separately, per priority class.
+
+## 5. Architecture and system boundaries
+
+- The **gateway** is the policy boundary: identity, quotas, token estimation, cancellation, usage.
+- The **scheduler** is the capacity boundary: it owns the only accurate view of free KV memory per
+  replica and decides admission and routing.
+- The **model servers** are the compute boundary: each GPU runs an independent engine replica with
+  continuous batching and a paged KV cache.
+- The **registry and evaluation harness** form the release boundary: artefacts and the evidence that
+  they are good enough travel together.
+
+## 6. Context, container and component views
+
+<C4Views />
+
+### Explore the system
+
+<ArchitectureDiagram system="llm-inference-platform" />
+
+## 7. Important design decisions
+
+<ADR id="LLM-ADR-001" />
+
+<ADR id="LLM-ADR-002" />
+
+<ADR id="LLM-ADR-003" />
+
+## 8. Alternatives considered
+
+<Tradeoffs
+  title="Weight precision on a 24 GB GPU (8B-class model)"
+  criteria="Free memory for KV cache, decode speed, and quality on the platform's own tasks."
+  options={[
+    { name: "FP16 / BF16", benefits: ["Reference quality", "Widest kernel support"], drawbacks: ["~16 GB of weights", "Least KV capacity", "Most bytes read per decode step"], chooseWhen: "Quality-critical workloads that fail the quantisation gate." },
+    { name: "8-bit weights", benefits: ["Small quality risk", "~8 GB of weights"], drawbacks: ["Half the weight savings of 4-bit"], chooseWhen: "A middle ground when 4-bit fails the gate." },
+    { name: "4-bit weights (AWQ/GPTQ-class)", benefits: ["~4.5–5 GB of weights", "~3× KV capacity vs FP16", "Faster single-stream decode"], drawbacks: ["Quality must be verified per task", "Format-specific kernels"], chooseWhen: "Default, behind the evaluation gate.", selected: true }
+  ]}
+/>
+
+## 9. Trade-offs and rejected alternatives
+
+- **Admission control rejects work** that a permissive system would accept and serve slowly. That is
+  the point: a 429 with Retry-After is a better outcome than every user's latency doubling.
+- **Replicas don't pool memory.** A single very long context must fit within one GPU's KV budget —
+  accepted, and enforced as a context-length cap per class.
+- **Quantisation adds a release dependency** on the evaluation pipeline — accepted, because otherwise
+  quality regressions are discovered by users.
+- Rejected: **tensor parallelism over PCIe** for a model that fits on one GPU (per-layer
+  synchronisation on every token), and **free engine preemption** as the overload strategy.
+
+## 10. Security and trust boundaries
+
+- **No egress from the GPU node**; model artefacts are pulled from the internal registry and verified by checksum.
+- **Prompt and completion content is not logged** by default; metrics and traces carry token counts
+  and timings only. Debug logging, when enabled, is time-boxed, access-controlled and redacted.
+- **Per-tenant keys and quotas** at the gateway; usage is attributable without storing content.
+- **Agents are constrained**: tool allow-lists, step and token budgets, and validation of model output
+  before any tool executes — the model is treated as an untrusted component.
+- **Prompt injection** is assumed possible in any retrieved content; tools with side effects require
+  explicit confirmation or run with least privilege.
+
+## 11. Failure modes and recovery behaviour
+
+<Tradeoffs
+  title="Failure modes and their containment"
+  columns={{ option: "Failure", benefits: "Containment", drawbacks: "Impact", chooseWhen: "Detection & recovery" }}
+  options={[
+    { name: "KV cache oversubscribed", benefits: ["Admission by token budget prevents it in the common case"], drawbacks: ["If estimates are wrong: preemption, latency spikes"], chooseWhen: "Detection: engine preemption counter. Recovery: lower max_tokens caps, increase headroom." },
+    { name: "GPU / engine crash", benefits: ["Other replica keeps serving", "Batch class sheds first"], drawbacks: ["Capacity halves until restart"], chooseWhen: "Detection: health check. Recovery: supervisor restart; scheduler drains and re-admits." },
+    { name: "Client abandons a stream", benefits: ["Cancellation frees KV blocks immediately"], drawbacks: ["None if propagated"], chooseWhen: "Detection: disconnect event. Recovery: automatic." },
+    { name: "Bad model artefact", benefits: ["Staged rollout: one replica first", "Checksum + eval gate"], drawbacks: ["Half capacity runs the candidate during rollout"], chooseWhen: "Detection: error rate, output validity metrics. Recovery: roll back the replica." }
+  ]}
+/>
+
+## 12. Scalability and performance reasoning
+
+<Callout type="assumption" title="Theoretical estimates — assumptions stated">
+  Model: an 8B-class decoder with 32 layers, grouped-query attention with 8 KV heads of dimension 128.
+  FP16 KV cache. ~2.5 GB per GPU reserved for the runtime, activations and workspace. Memory
+  bandwidth ~1 TB/s per GPU. These inputs illustrate the method; substitute the real model
+  configuration and measure.
+</Callout>
+
+**KV cache per token**
+
+KV bytes per token = 2 (K and V) × layers × KV heads × head dim × bytes per element
+= 2 × 32 × 8 × 128 × 2 B = **131,072 B ≈ 128 KiB per token**.
+
+An 8k-token sequence therefore holds about **1.07 GB** of KV cache (8,192 × 131,072 B).
+
+**What fits on one 24 GB GPU**
+
+<Tabs labels={["FP16 weights", "4-bit weights", "4-bit weights + FP8 KV"]} title="KV capacity per GPU by precision">
+<TabPanel>
+
+- Weights ≈ 8B × 2 B ≈ 16 GB; runtime reserve ≈ 2.5 GB.
+- KV budget ≈ 24 − 16 − 2.5 ≈ **5.5 GB ≈ 42k tokens** (5.5 × 10⁹ B ÷ 131,072 B).
+- ≈ **5 sequences at 8k**, or ≈ 14 at 3k average.
+
+</TabPanel>
+<TabPanel>
+
+- Weights ≈ 4.5–5 GB (4-bit plus scales); runtime reserve ≈ 2.5 GB.
+- KV budget ≈ 24 − 5 − 2.5 ≈ **16.5 GB ≈ 126k tokens**.
+- ≈ **15 sequences at 8k**, or ≈ 42 at 3k average.
+
+</TabPanel>
+<TabPanel>
+
+- Same weights; KV elements stored in 1 byte → **64 KiB per token**.
+- KV budget ≈ 16.5 GB ≈ **252k tokens** — double, at a long-context accuracy cost that must be
+  evaluated separately.
+
+</TabPanel>
+</Tabs>
+
+Across two GPUs with 4-bit weights, the theoretical ceiling is ≈ 84 concurrent sequences at 3k tokens —
+comfortably above the 24-sequence capacity target, leaving headroom for fragmentation, longer agent
+contexts and estimation error. The target is set well below the ceiling on purpose.
+
+**Decode speed upper bound**
+
+Each decode step reads the weights once for the whole batch (plus each sequence's KV cache). An upper
+bound for one stream is memory bandwidth ÷ bytes read per token:
+
+- FP16: ~1 TB/s ÷ 16 GB ≈ **≤ 60 tokens/s** for a single stream.
+- 4-bit: ~1 TB/s ÷ 5 GB ≈ **≤ 200 tokens/s** for a single stream.
+
+Batching amortises the weight reads across sequences, so aggregate throughput rises with batch size
+until KV reads and compute become the limit — which is why continuous batching, not more replicas of
+single streams, is the throughput lever. Real engines reach a fraction of these bounds; the bounds tell
+you which resource you are fighting.
+
+**Prefill cost**
+
+Prefill costs roughly 2 × parameters FLOPs per prompt token: ≈ 16 GFLOP/token for 8B parameters. A
+4k-token prompt is ≈ 64 TFLOP — tens to hundreds of milliseconds of GPU time, during which that GPU's
+decode steps for other sequences stall unless the engine interleaves (chunked prefill). Long prompts
+from agents are therefore a latency risk for everyone on the same replica.
+
+## 13. Observability and operational considerations
+
+- **Latency by class:** TTFT and inter-token latency percentiles per priority class, plus queue wait.
+- **Capacity:** KV-cache utilisation, free blocks, preemptions, running vs waiting sequences.
+- **Throughput:** prompt and generated tokens per second per replica; batch size distribution.
+- **GPU:** memory used, utilisation, temperature and clock throttling.
+- **Quality in production:** structured-output validity rate, tool-call parse failures, refusal rate —
+  cheap proxies that catch regressions between evaluation runs.
+- **Usage:** tokens per tenant and class, to inform the next hardware purchase with evidence.
+
+## 14. Testing and validation strategy
+
+| Question | Method |
+| --- | --- |
+| Do the capacity estimates hold? | Load test with recorded prompt/completion length distributions; find the concurrency where p95 TTFT or ITL breaches its target. |
+| Is overload handled explicitly? | Step load beyond capacity; assert interactive latency within target, batch 429s with Retry-After, zero preemption storms. |
+| Is the quantised model good enough? | Task suites (extraction F1, tool-call validity, long-context retrieval) vs FP16 baseline, per artefact. |
+| Do long prompts hurt neighbours? | Mix 16k-token agent prompts into interactive traffic; measure ITL impact with and without chunked prefill. |
+| Does cancellation free capacity? | Abort streams mid-generation; assert KV blocks are released within one scheduling interval. |
+
+## 15. Outcomes and lessons learned
+
+**Outcomes.** No benchmark results are claimed here. Success would be demonstrated by the load test
+finding a sustainable concurrency at or above the capacity target with latency objectives met, and by
+the quantised artefact passing every task-suite tolerance.
+
+**Lessons:**
+
+- *Size in tokens of KV cache, not in requests or "users".* It is the resource that actually runs out.
+- *Separate prefill and decode in your head and your dashboards.* They have different bottlenecks.
+- *Quantisation is a capacity decision with a quality bill.* Pay it with evidence, per task.
+- *Make overload explicit.* Queues and 429s are a feature; preemption storms are a failure mode.
+- *Topology follows the interconnect.* Over PCIe, independent replicas usually beat tensor parallelism
+  for models that fit.

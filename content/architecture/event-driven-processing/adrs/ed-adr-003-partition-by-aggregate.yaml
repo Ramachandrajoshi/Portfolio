@@ -1,0 +1,30 @@
+id: ED-ADR-003
+title: Order guarantees per aggregate via partitioning by aggregate id
+status: accepted
+date: 2026-10-09
+caseStudy: event-driven-processing
+context: >-
+  Consumers need "OrderCancelled" to be processed after "OrderPlaced" for the same order, but global
+  ordering across all orders would serialise the system and limit throughput to one consumer.
+decision: >-
+  Use the order id as the partition key, so all events of one order land on one partition and are consumed
+  in order by one consumer instance. Across orders there is no ordering guarantee. Consumers also check
+  the aggregate version carried in each event and park out-of-order events (e.g. after a replay) rather
+  than applying them.
+alternatives:
+  - option: Single partition (global order)
+    summary: One ordered stream for everything.
+    rejectedBecause: Caps throughput at one consumer and makes every slow event block all others.
+  - option: No ordering, consumers reconcile
+    summary: Accept any order; fetch current state on each event.
+    rejectedBecause: Adds read load and races; acceptable only for idempotent "state changed" notifications.
+consequences:
+  positive:
+    - Parallelism scales with partitions; ordering where the business needs it.
+  negative:
+    - Hot keys (very busy aggregates) limit a partition's throughput.
+    - A poison event blocks its partition until moved to retry or dead-letter (see ED-ADR-004).
+risks:
+  - Changing the partition count reshuffles keys; planned as a migration with a drain window.
+followUps:
+  - Monitor per-partition lag to detect hot keys early.

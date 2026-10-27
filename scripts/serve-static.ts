@@ -50,7 +50,7 @@ createServer((req, res) => {
   const notFound = () => send(res, join(OUT_DIR, '404.html'), 404);
 
   if (basePath) {
-    if (path === '/' ) {
+    if (path === '/') {
       res.writeHead(302, { location: `${basePath}/` });
       return res.end();
     }

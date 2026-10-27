@@ -13,7 +13,11 @@ interface Pagefind {
   init?: () => Promise<void>;
 }
 
-type State = { kind: 'idle' } | { kind: 'loading' } | { kind: 'unavailable' } | { kind: 'results'; query: string; items: PagefindResult[] };
+type State =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'unavailable' }
+  | { kind: 'results'; query: string; items: PagefindResult[] };
 
 /**
  * Static full-text search. Pagefind builds a chunked index of every page's
@@ -73,7 +77,9 @@ export function SearchClient() {
         }}
         className="flex max-w-2xl gap-2"
       >
-        <label htmlFor="site-search" className="sr-only">Search the site</label>
+        <label htmlFor="site-search" className="sr-only">
+          Search the site
+        </label>
         <input
           id="site-search"
           name="q"
@@ -83,7 +89,12 @@ export function SearchClient() {
           className="h-12 flex-1 rounded-md border border-border-strong bg-surface px-4 text-base placeholder:text-subtle"
           data-testid="search-input"
         />
-        <button type="submit" className="h-12 rounded-md bg-accent px-5 font-medium text-accent-contrast hover:bg-accent-strong">Search</button>
+        <button
+          type="submit"
+          className="h-12 rounded-md bg-accent px-5 font-medium text-accent-contrast hover:bg-accent-strong"
+        >
+          Search
+        </button>
       </form>
       <div aria-live="polite" className="mt-8" data-testid="search-results">
         {state.kind === 'loading' ? <p className="text-muted">Searching…</p> : null}
@@ -93,15 +104,22 @@ export function SearchClient() {
         {state.kind === 'results' ? (
           <>
             <p className="text-sm text-muted">
-              {state.items.length === 0 ? `No results for “${state.query}”.` : `${state.items.length} result${state.items.length === 1 ? '' : 's'} for “${state.query}”`}
+              {state.items.length === 0
+                ? `No results for “${state.query}”.`
+                : `${state.items.length} result${state.items.length === 1 ? '' : 's'} for “${state.query}”`}
             </p>
             <ol className="mt-4 space-y-4">
               {state.items.map((r) => (
                 <li key={r.url} className="card p-5">
                   {r.meta.type ? <p className="eyebrow">{r.meta.type}</p> : null}
-                  <a href={r.url} className="mt-1 block font-display text-lg font-semibold hover:text-accent">{r.meta.title ?? r.url}</a>
+                  <a href={r.url} className="mt-1 block font-display text-lg font-semibold hover:text-accent">
+                    {r.meta.title ?? r.url}
+                  </a>
                   {/* Pagefind excerpts contain only <mark> highlighting of indexed text. */}
-                  <p className="mt-1 text-sm text-muted [&_mark]:bg-highlight/25 [&_mark]:text-fg" dangerouslySetInnerHTML={{ __html: r.excerpt }} />
+                  <p
+                    className="mt-1 text-sm text-muted [&_mark]:bg-highlight/25 [&_mark]:text-fg"
+                    dangerouslySetInnerHTML={{ __html: r.excerpt }}
+                  />
                 </li>
               ))}
             </ol>

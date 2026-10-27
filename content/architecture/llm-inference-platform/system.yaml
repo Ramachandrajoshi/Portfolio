@@ -1,0 +1,229 @@
+# Interactive system model for the LLM inference case study (illustrative).
+caseStudy: llm-inference-platform
+title: Local LLM inference platform — container view
+description: >-
+  A gateway and a KV-budget-aware scheduler in front of per-GPU model servers with continuous batching.
+  Play a scenario to follow a streamed chat request, an overload, or the promotion of a newly quantised model.
+groups:
+  - { id: clients, label: Clients, trust: internal }
+  - { id: control, label: Control, trust: internal }
+  - { id: gpu, label: GPU node, trust: restricted }
+nodes:
+  - id: apps
+    label: Internal applications
+    kind: client
+    group: clients
+    position: { x: 0, y: 40 }
+    technology: Services calling a REST API
+    responsibility: Summarisation, extraction and classification workloads embedded in business applications.
+    rationale: An OpenAI-compatible API lets applications switch between local and hosted models without code changes.
+    interfaces: [HTTPS (OpenAI-compatible)]
+    failureModes:
+      - mode: Unbounded max_tokens
+        effect: Reserves KV memory that is never used, reducing admission capacity.
+        mitigation: Per-class defaults and caps enforced at the gateway.
+    security: [Service credentials per application]
+  - id: agents
+    label: Agent runtime
+    kind: service
+    group: clients
+    position: { x: 0, y: 200 }
+    technology: Tool-calling agent loops
+    responsibility: Multi-step agents that call tools and the model repeatedly, growing context with each step.
+    rationale: Agents are the most demanding clients — long, growing contexts — so they get their own priority class and budgets.
+    interfaces: [HTTPS streaming, Tool APIs]
+    failureModes:
+      - mode: Runaway loop
+        effect: Consumes token budget and KV capacity.
+        mitigation: Step and token limits per run; budget enforced by the gateway ledger.
+    security: [Tool allow-lists, Outputs validated before tool execution]
+  - id: gateway
+    label: Inference gateway
+    kind: gateway
+    group: control
+    position: { x: 260, y: 120 }
+    technology: OpenAI-compatible API service
+    responsibility: Authenticates callers, estimates token demand, enforces per-tenant token quotas and rate limits, streams responses and records usage.
+    rationale: Token-based limits match the real cost driver; a stable API isolates clients from engine changes.
+    interfaces: [HTTPS + SSE streaming, Scheduler API, Usage ledger writes]
+    failureModes:
+      - mode: Client disconnects mid-stream
+        effect: GPU keeps generating unwanted tokens.
+        mitigation: Propagate cancellation to the engine to free KV blocks immediately.
+    security: [Per-tenant API keys, Prompt/response logging off by default, PII redaction when enabled]
+    adrs: [LLM-ADR-001]
+  - id: router
+    label: Scheduler / router
+    kind: service
+    group: control
+    position: { x: 520, y: 120 }
+    technology: Admission controller + router
+    responsibility: Admits requests only when a replica has enough free KV budget; queues by priority class; routes to replicas (prefix-aware where possible).
+    rationale: Overload should become explicit queueing or 429s, not engine preemption storms.
+    interfaces: [Scheduler API, Engine metrics (free KV blocks), Generate calls]
+    failureModes:
+      - mode: Stale capacity view
+        effect: Over-admission and preemption.
+        mitigation: Conservative headroom; engine preemption counter feeds back into admission.
+    security: [Internal only]
+    adrs: [LLM-ADR-001, LLM-ADR-003]
+  - id: engine0
+    label: Model server · GPU 0
+    kind: model
+    group: gpu
+    position: { x: 800, y: 40 }
+    technology: Inference engine with continuous batching and paged KV cache
+    responsibility: Runs prefill and decode for admitted requests; manages KV cache blocks; streams tokens.
+    rationale: Continuous batching keeps the GPU busy across requests of different lengths; paged KV avoids fragmentation.
+    interfaces: [Generate (streaming), Metrics endpoint]
+    failureModes:
+      - mode: KV cache exhausted
+        effect: Preemption and recomputation; latency spikes.
+        mitigation: Admission by KV budget; alert on preemptions.
+      - mode: GPU fault / OOM
+        effect: Replica down.
+        mitigation: Scheduler drains to the other replica; supervisor restarts the engine.
+    security: [No network egress, Weights verified by checksum at load]
+    adrs: [LLM-ADR-002, LLM-ADR-003]
+  - id: engine1
+    label: Model server · GPU 1
+    kind: model
+    group: gpu
+    position: { x: 800, y: 200 }
+    technology: Inference engine (replica)
+    responsibility: Independent replica of the same model for capacity and failure isolation.
+    rationale: Over PCIe, independent replicas avoid per-layer cross-GPU synchronisation.
+    interfaces: [Generate (streaming), Metrics endpoint]
+    failureModes:
+      - mode: Replica unavailable
+        effect: Capacity halves.
+        mitigation: Admission recalculates budgets; batch class sheds first.
+    security: [No network egress]
+    adrs: [LLM-ADR-003]
+  - id: registry
+    label: Model registry
+    kind: storage
+    position: { x: 1060, y: 40 }
+    technology: Object storage + manifest
+    responsibility: Stores versioned model artefacts (quantised weights, tokenizer, config) with checksums and evaluation reports.
+    rationale: Promotion is evidence-based — the artefact travels with its eval report.
+    interfaces: [Artefact download at engine start]
+    failureModes:
+      - mode: Corrupted artefact
+        effect: Engine fails to start or produces garbage.
+        mitigation: Checksum verification; staged rollout one replica at a time.
+    security: [Signed manifests, Read-only access for engines]
+    adrs: [LLM-ADR-002]
+  - id: evals
+    label: Evaluation harness
+    kind: worker
+    position: { x: 260, y: 320 }
+    technology: Batch evaluation jobs
+    responsibility: Runs task-specific suites against candidate artefacts and the FP16 baseline; publishes reports to the registry.
+    rationale: Quantisation quality must be judged on the platform's own tasks.
+    interfaces: [Gateway API (batch class), Registry writes]
+    failureModes:
+      - mode: Unrepresentative suites
+        effect: False confidence.
+        mitigation: Suites refreshed from sampled, anonymised real prompts.
+    security: [Eval data anonymised]
+    adrs: [LLM-ADR-002]
+  - id: ledger
+    label: Usage ledger
+    kind: database
+    position: { x: 520, y: 320 }
+    technology: PostgreSQL
+    responsibility: Records prompt and completion tokens per tenant, application and priority class.
+    rationale: Quotas, chargeback and capacity planning all need token-level accounting.
+    interfaces: [SQL]
+    failureModes:
+      - mode: Ledger write failure
+        effect: Usage under-counted.
+        mitigation: Buffered async writes with retry; reconciliation from gateway logs.
+    security: [No prompt content stored]
+  - id: metrics
+    label: Metrics & traces
+    kind: monitoring
+    position: { x: 1060, y: 200 }
+    technology: Prometheus-compatible metrics + OpenTelemetry traces
+    responsibility: TTFT, inter-token latency, tokens/s, queue depth, KV utilisation, preemptions, GPU utilisation and memory.
+    rationale: LLM serving fails on latency percentiles and memory, not on CPU — measure those.
+    interfaces: [Scrape, OTLP]
+    failureModes:
+      - mode: Missing per-class metrics
+        effect: Batch traffic hides interactive latency problems.
+        mitigation: All latency metrics labelled by priority class.
+    security: [No prompt content in telemetry]
+edges:
+  - { id: e-apps-gw, source: apps, target: gateway, label: Completion request, protocol: HTTPS, mode: sync }
+  - {
+      id: e-agents-gw,
+      source: agents,
+      target: gateway,
+      label: Chat request (stream),
+      protocol: HTTPS + SSE,
+      mode: stream,
+    }
+  - { id: e-gw-router, source: gateway, target: router, label: Admit (token estimate), protocol: gRPC, mode: sync }
+  - { id: e-router-e0, source: router, target: engine0, label: Generate, protocol: gRPC stream, mode: stream }
+  - { id: e-router-e1, source: router, target: engine1, label: Generate, protocol: gRPC stream, mode: stream }
+  - { id: e-e0-registry, source: engine0, target: registry, label: Load weights, protocol: Object GET, mode: batch }
+  - { id: e-e1-registry, source: engine1, target: registry, label: Load weights, protocol: Object GET, mode: batch }
+  - { id: e-gw-ledger, source: gateway, target: ledger, label: Record usage, protocol: SQL (async), mode: async }
+  - { id: e-evals-gw, source: evals, target: gateway, label: Eval runs (batch class), protocol: HTTPS, mode: batch }
+  - {
+      id: e-evals-registry,
+      source: evals,
+      target: registry,
+      label: Publish eval report,
+      protocol: Object PUT,
+      mode: batch,
+    }
+  - { id: e-e0-metrics, source: engine0, target: metrics, label: Engine metrics, protocol: Scrape, mode: stream }
+  - { id: e-router-metrics, source: router, target: metrics, label: Queue & admissions, protocol: Scrape, mode: stream }
+flows:
+  - id: chat
+    title: A streamed chat request
+    description: Admission by KV budget, then prefill and decode on one replica.
+    steps:
+      - { edge: e-agents-gw, note: An agent sends a streaming chat request with 6k tokens of context. }
+      - {
+          edge: e-gw-router,
+          note: The gateway authenticates,
+          checks the tenant's token quota and estimates KV demand (prompt + capped max_tokens).,
+        }
+      - {
+          edge: e-router-e0,
+          note: The scheduler admits it to GPU 0,
+          which has enough free KV blocks. Prefill computes the prompt; the first token streams back.,
+        }
+      - { edge: e-e0-metrics, note: TTFT, inter-token latency and KV utilisation are recorded per priority class. }
+      - { edge: e-gw-ledger, note: On completion, prompt and completion tokens are recorded for the tenant. }
+  - id: overload
+    title: Overload, handled explicitly
+    description: When KV budget runs out, requests queue by class or get 429 — instead of preempting everyone.
+    steps:
+      - { edge: e-apps-gw, note: A burst of long batch requests arrives. }
+      - { edge: e-gw-router, note: The scheduler finds no replica with enough free KV budget. }
+      - {
+          edge: e-router-metrics,
+          note: Queue depth rises; interactive traffic is still admitted first as KV blocks are freed.,
+        }
+      - {
+          edge: e-router-e1,
+          note: Batch requests are admitted to GPU 1 as capacity frees; those exceeding their wait objective received 429 + Retry-After.,
+        }
+  - id: promote
+    title: Promoting a quantised model
+    description: An artefact reaches production only with an evaluation report that passes the quality gate.
+    steps:
+      - {
+          edge: e-evals-gw,
+          note: The harness runs task suites against the 4-bit candidate (batch class) and the FP16 baseline.,
+        }
+      - { edge: e-evals-registry, note: The comparison report is stored with the artefact; the gate decides promotion. }
+      - {
+          edge: e-e1-registry,
+          note: GPU 1 loads the promoted artefact first (checksum verified) while GPU 0 keeps serving.,
+        }
+      - { edge: e-e0-registry, note: After metrics stay healthy, GPU 0 is rolled to the new artefact. }

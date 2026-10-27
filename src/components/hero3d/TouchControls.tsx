@@ -7,7 +7,15 @@ import type { InputController } from './input';
  * On-screen joystick + jump/interact buttons, shown only on coarse-pointer (touch) devices.
  * Pushing the stick to its edge runs.
  */
-export function TouchControls({ input, onInteract, canInteract }: { input: RefObject<InputController | null>; onInteract: () => void; canInteract: boolean }) {
+export function TouchControls({
+  input,
+  onInteract,
+  canInteract,
+}: {
+  input: RefObject<InputController | null>;
+  onInteract: () => void;
+  canInteract: boolean;
+}) {
   const base = useRef<HTMLDivElement>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const pointer = useRef<number | null>(null);
@@ -32,7 +40,7 @@ export function TouchControls({ input, onInteract, canInteract }: { input: RefOb
   };
 
   return (
-    <div data-hud className="pointer-coarse:flex absolute inset-x-0 bottom-0 z-20 hidden items-end justify-between p-5">
+    <div data-hud className="absolute inset-x-0 bottom-0 z-20 hidden items-end justify-between p-5 pointer-coarse:flex">
       <div
         ref={base}
         className="relative size-28 touch-none rounded-full border border-border-strong bg-bg-elevated/50 backdrop-blur"
@@ -49,7 +57,7 @@ export function TouchControls({ input, onInteract, canInteract }: { input: RefOb
         role="presentation"
       >
         <span
-          className="absolute left-1/2 top-1/2 size-12 rounded-full border border-accent bg-accent/30"
+          className="absolute top-1/2 left-1/2 size-12 rounded-full border border-accent bg-accent/30"
           style={{ transform: `translate(calc(-50% + ${knob.x * 2.2}rem), calc(-50% + ${knob.y * 2.2}rem))` }}
         />
       </div>

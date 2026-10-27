@@ -14,7 +14,15 @@ export type CalloutType = keyof typeof variants;
  * Semantic callout. Rendered as an <aside> with a visible text label so the meaning never
  * depends on colour alone. `assumption` marks numbers that are design inputs, not results.
  */
-export function Callout({ type = 'info', title, children }: { type?: CalloutType; title?: string; children: ReactNode }) {
+export function Callout({
+  type = 'info',
+  title,
+  children,
+}: {
+  type?: CalloutType;
+  title?: string;
+  children: ReactNode;
+}) {
   const v = variants[type];
   return (
     <aside
@@ -22,8 +30,11 @@ export function Callout({ type = 'info', title, children }: { type?: CalloutType
       aria-label={title ?? v.label}
       data-callout={type}
     >
-      <p className={cn('flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wider', v.text)}>
-        <span aria-hidden className="inline-flex size-5 items-center justify-center rounded-full border border-current text-[0.7rem]">
+      <p className={cn('flex items-center gap-2 font-mono text-xs font-semibold tracking-wider uppercase', v.text)}>
+        <span
+          aria-hidden
+          className="inline-flex size-5 items-center justify-center rounded-full border border-current text-[0.7rem]"
+        >
           {v.icon}
         </span>
         {title ?? v.label}

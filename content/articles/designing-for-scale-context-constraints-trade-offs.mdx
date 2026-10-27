@@ -1,0 +1,134 @@
+---
+title: "Designing for Scale: Context, Constraints and Trade-offs"
+description: Scale is not a number of users. A practical method for turning vague scalability goals into constraints, measurable scenarios and decisions you can defend.
+date: 2026-10-14
+tags: [system-design, architecture, capacity-planning, adr]
+series: Architecture fundamentals
+seriesOrder: 1
+provenance: illustrative
+---
+
+"It needs to scale" is the most common non-functional requirement and the least useful one. It says
+nothing about *what* grows, *how fast*, *what must stay true while it grows*, or *what we are willing
+to pay*. This article is the method I use to turn that sentence into something a design can be
+judged against.
+
+<Callout type="important" title="The short version">
+  Scale is a property of a **workload under constraints**, measured against **quality-attribute
+  scenarios**. Name the dimension that grows, the resource it exhausts first, and the behaviour you
+  require when it does.
+</Callout>
+
+## Start with context, not technology
+
+Before any component diagram, three questions:
+
+1. **Who is affected, and what hurts today?** A design without a stated problem cannot be evaluated.
+2. **What would make the change worth it?** The outcome you would point to in six months.
+3. **What cannot change?** Contracts, regulations, budgets, team skills, existing systems.
+
+The third question does most of the work. In a multi-tenant modernisation I describe in
+[a case study](/architecture/multi-tenant-platform/), one contractual promise — physically separated
+customer data — eliminated half of the tenancy models before anyone discussed databases.
+
+## Name the dimension that grows
+
+"Users" is rarely the right unit. Useful dimensions are specific:
+
+| Vague | Specific | Resource it usually exhausts |
+| --- | --- | --- |
+| More users | Concurrent sessions at peak | Connections, memory |
+| More data | Rows written per second; total retained | Write throughput; storage, index size |
+| More customers | Tenants, and the skew between them | Isolation, noisy-neighbour headroom |
+| Bigger requests | Tokens of context per request | GPU memory (KV cache) |
+| More devices | Messages per second after an outage | Ingestion burst capacity |
+
+Each row points at a different bottleneck — which is why "scalable" designs for one dimension often
+fail on another.
+
+## Do the arithmetic before the benchmark
+
+A ten-line estimate frequently finds the constraint before any load test. Two examples from the case
+studies on this site:
+
+- **Database connections.** 400 tenants × 8 instances × a pool of 10 = 32,000 *potential* connections,
+  against a PostgreSQL budget in the hundreds. The design needs a pooler and shard placement long
+  before it needs more CPU.
+- **GPU memory.** An 8B-class model needs ~128 KiB of KV cache per token. On a 24 GB GPU with FP16
+  weights, that leaves room for roughly five 8k-token conversations — so concurrency, not model speed,
+  is the constraint.
+
+<Callout type="assumption">
+  Back-of-the-envelope numbers are **design assumptions**. Write them down as such, and let them define
+  what the load test must measure — never quote them as results.
+</Callout>
+
+## Write scenarios, not adjectives
+
+A quality-attribute scenario has a stimulus, an environment and a measurable response:
+
+> *When one tenant generates 10× its normal request rate (stimulus) during business hours
+> (environment), other tenants' p95 latency degrades by less than 10 % (response).*
+
+That sentence can be tested. "The system should be scalable and resilient" cannot.
+
+## Compare options against the same criteria
+
+Every significant decision deserves at least two credible options, compared on the scenarios that
+matter here — not on popularity.
+
+<Tradeoffs
+  title="Scaling a read-heavy API"
+  criteria="p95 latency at 5× read load, staleness tolerated by the business, operational cost."
+  options={[
+    { name: "Vertical scaling", benefits: ["No code change", "Immediate"], drawbacks: ["Hard ceiling", "Cost grows faster than capacity"], chooseWhen: "Growth is bounded and near-term." },
+    { name: "Read replicas", benefits: ["Linear read scaling", "Familiar operations"], drawbacks: ["Replication lag visible to users", "Writes unchanged"], chooseWhen: "Seconds of staleness are acceptable.", selected: true },
+    { name: "Cache in front", benefits: ["Largest latency win for hot keys"], drawbacks: ["Invalidation complexity", "Cold-start stampedes"], chooseWhen: "Highly skewed access patterns with tolerable staleness." }
+  ]}
+/>
+
+## Record the decision — including what you gave up
+
+An Architecture Decision Record captures context, decision, alternatives and consequences. The
+negative consequences are the most valuable part: they are what the next engineer needs to know
+before changing the design.
+
+<ADR
+  id="EX-ADR-010"
+  title="Serve dashboard reads from read replicas"
+  status="accepted"
+  date="2026-10-14"
+  context="Dashboard reads are 90 % of database load and grow with customers; writes are flat. The business accepts data that is a few seconds old on dashboards but not on the order screen."
+  decision="Route dashboard queries to two read replicas through a read-only connection string; keep order screens on the primary."
+  alternatives={[
+    { option: "Application cache", summary: "Cache dashboard results in Redis.", rejectedBecause: "Invalidation across many filter combinations is error-prone; replicas meet the target with less code." }
+  ]}
+  consequences={{
+    positive: ["Read capacity scales with replicas", "Primary protected from reporting load"],
+    negative: ["Replication lag must be monitored and shown to users when large", "Developers must choose the right connection per query"]
+  }}
+  risks={["Lag spikes during bulk writes"]}
+  followUps={["Alert on replica lag > 5 s", "Lint rule: dashboard repositories must use the read-only context"]}
+/>
+
+## Validate, then keep validating
+
+<Timeline
+  title="How a scaling decision earns trust"
+  items={[
+    { label: "Design", title: "Capacity estimate with stated assumptions", status: "done" },
+    { label: "Build", title: "Fitness functions in CI (e.g. architecture tests, query budgets)", status: "done" },
+    { label: "Pre-release", title: "Load test against the scenarios, with realistic skew", status: "current" },
+    { label: "Production", title: "Dashboards on the scenario metrics; alerts before the limit", status: "planned" },
+    { label: "Review", title: "Revisit the ADR when an assumption is disproved", status: "planned" }
+  ]}
+/>
+
+## Checklist
+
+- What grows, in what unit, and how fast?
+- Which resource runs out first — and what is the arithmetic?
+- Which scenarios define "good enough", with numbers?
+- Which options were compared, on which criteria?
+- What did we give up, and where is that written down?
+- How will we know, in production, that an assumption was wrong?

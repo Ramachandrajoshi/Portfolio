@@ -11,13 +11,21 @@ import { useEffect, type RefObject } from 'react';
  */
 export const easing = { standard: [0.2, 0, 0, 1] as const, emphasized: [0.3, 0, 0, 1.2] as const };
 
-const prefersReducedMotion = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Fade/slide an element in. No-op under reduced motion. */
 export function enter(el: Element | null | undefined, from: 'below' | 'right' = 'below', duration = 0.28) {
   if (!el || prefersReducedMotion()) return;
-  const transform = from === 'right' ? ['translateX(24px)', 'translateX(0)'] : ['translateY(16px) scale(0.985)', 'translateY(0) scale(1)'];
-  void animate(el, { opacity: [0, 1], transform }, { duration, ease: easing.standard as unknown as [number, number, number, number] });
+  const transform =
+    from === 'right'
+      ? ['translateX(24px)', 'translateX(0)']
+      : ['translateY(16px) scale(0.985)', 'translateY(0) scale(1)'];
+  void animate(
+    el,
+    { opacity: [0, 1], transform },
+    { duration, ease: easing.standard as unknown as [number, number, number, number] },
+  );
 }
 
 /** Runs the enter animation whenever `key` changes and the element is mounted. */

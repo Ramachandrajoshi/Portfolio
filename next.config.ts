@@ -3,6 +3,13 @@ import { resolveDeployment } from './src/lib/deployment';
 
 const { basePath, siteUrl } = resolveDeployment(process.env.NEXT_PUBLIC_SITE_URL);
 
+// `next dev`: keep content in sync by running Velite in watch mode inside the dev process.
+// Production builds run `velite build` explicitly first (see package.json "build").
+if (process.argv.includes('dev') && !process.env.VELITE_STARTED) {
+  process.env.VELITE_STARTED = '1';
+  void import('velite').then((velite) => velite.build({ watch: true, clean: false }));
+}
+
 const nextConfig: NextConfig = {
   // Fully static output for GitHub Pages: no server, no API routes, no ISR.
   output: 'export',

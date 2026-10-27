@@ -18,10 +18,22 @@ import {
 import Link from 'next/link';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@/lib/cx';
-import { kindMeta, modeLabel, type AdrSummary, type ExplorerEdge, type ExplorerModel, type ExplorerNode } from './types';
+import {
+  kindMeta,
+  modeLabel,
+  type AdrSummary,
+  type ExplorerEdge,
+  type ExplorerModel,
+  type ExplorerNode,
+} from './types';
 
 type NodeData = { node: ExplorerNode; state: 'idle' | 'selected' | 'related' | 'dimmed' };
-type EdgeData = { edge: ExplorerEdge; state: 'idle' | 'active' | 'related' | 'dimmed'; animate: boolean; packet: boolean };
+type EdgeData = {
+  edge: ExplorerEdge;
+  state: 'idle' | 'active' | 'related' | 'dimmed';
+  animate: boolean;
+  packet: boolean;
+};
 type SystemNode = Node<NodeData, 'system'>;
 type SystemEdge = Edge<EdgeData, 'flow'>;
 
@@ -46,7 +58,7 @@ const SystemNodeView = memo(function SystemNodeView({ data }: NodeProps<SystemNo
           {meta.glyph}
         </span>
         <span className="min-w-0">
-          <span className="block text-[0.8rem] font-semibold leading-tight text-fg">{data.node.label}</span>
+          <span className="block text-[0.8rem] leading-tight font-semibold text-fg">{data.node.label}</span>
           <span className="mt-0.5 block truncate font-mono text-[0.62rem] text-muted">{data.node.technology}</span>
         </span>
       </div>
@@ -55,11 +67,33 @@ const SystemNodeView = memo(function SystemNodeView({ data }: NodeProps<SystemNo
   );
 });
 
-function FlowEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerEnd }: EdgeProps<SystemEdge>) {
-  const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 14 });
+function FlowEdgeView({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  data,
+  markerEnd,
+}: EdgeProps<SystemEdge>) {
+  const [path, labelX, labelY] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    borderRadius: 14,
+  });
   const state = data?.state ?? 'idle';
   const color =
-    state === 'active' ? 'var(--color-highlight)' : state === 'related' ? 'var(--color-accent)' : 'var(--color-border-strong)';
+    state === 'active'
+      ? 'var(--color-highlight)'
+      : state === 'related'
+        ? 'var(--color-accent)'
+        : 'var(--color-border-strong)';
   const dashed = data?.edge.mode !== 'sync';
   return (
     <>
@@ -121,21 +155,27 @@ function Explorer({ model, adrs, reducedMotion }: SystemExplorerProps) {
 
   const flow = model.flows.find((f) => f.id === flowId);
   const activeEdgeId = flow && step !== null ? flow.steps[step]?.edge : undefined;
-  const flowEdgeIds = useMemo(() => new Set(step !== null && flow ? flow.steps.slice(0, step + 1).map((s) => s.edge) : []), [flow, step]);
+  const flowEdgeIds = useMemo(
+    () => new Set(step !== null && flow ? flow.steps.slice(0, step + 1).map((s) => s.edge) : []),
+    [flow, step],
+  );
 
   // Playback: advance one step every 2.2 s; reduced motion keeps manual stepping only.
   useEffect(() => {
     if (!playing || !flow) return;
-    const timer = window.setTimeout(() => {
-      setStep((s) => {
-        const next = (s ?? -1) + 1;
-        if (next >= flow.steps.length) {
-          setPlaying(false);
-          return s;
-        }
-        return next;
-      });
-    }, step === null ? 50 : 2200);
+    const timer = window.setTimeout(
+      () => {
+        setStep((s) => {
+          const next = (s ?? -1) + 1;
+          if (next >= flow.steps.length) {
+            setPlaying(false);
+            return s;
+          }
+          return next;
+        });
+      },
+      step === null ? 50 : 2200,
+    );
     return () => window.clearTimeout(timer);
   }, [playing, step, flow]);
 
@@ -172,14 +212,20 @@ function Explorer({ model, adrs, reducedMotion }: SystemExplorerProps) {
     () =>
       model.edges.map((edge) => {
         let state: EdgeData['state'] = 'idle';
-        if (step !== null) state = edge.id === activeEdgeId ? 'active' : flowEdgeIds.has(edge.id) ? 'related' : 'dimmed';
+        if (step !== null)
+          state = edge.id === activeEdgeId ? 'active' : flowEdgeIds.has(edge.id) ? 'related' : 'dimmed';
         else if (selected) state = edge.source === selected || edge.target === selected ? 'related' : 'dimmed';
         return {
           id: edge.id,
           source: edge.source,
           target: edge.target,
           type: 'flow',
-          data: { edge, state, animate: !reducedMotion && state !== 'dimmed', packet: !reducedMotion && edge.id === activeEdgeId },
+          data: {
+            edge,
+            state,
+            animate: !reducedMotion && state !== 'dimmed',
+            packet: !reducedMotion && edge.id === activeEdgeId,
+          },
           ariaLabel: `${edge.label}: ${edge.protocol}, ${modeLabel[edge.mode]}`,
         };
       }),
@@ -200,10 +246,21 @@ function Explorer({ model, adrs, reducedMotion }: SystemExplorerProps) {
       <div className="min-w-0 space-y-3">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Diagram controls">
-          <ToolButton onClick={() => void zoomIn({ duration: reducedMotion ? 0 : 200 })} label="Zoom in">＋</ToolButton>
-          <ToolButton onClick={() => void zoomOut({ duration: reducedMotion ? 0 : 200 })} label="Zoom out">－</ToolButton>
-          <ToolButton onClick={() => void fitView({ padding: 0.15, duration: reducedMotion ? 0 : 400 })} label="Fit to view">⤢ Fit</ToolButton>
-          <ToolButton onClick={reset} label="Reset selection and view">↺ Reset</ToolButton>
+          <ToolButton onClick={() => void zoomIn({ duration: reducedMotion ? 0 : 200 })} label="Zoom in">
+            ＋
+          </ToolButton>
+          <ToolButton onClick={() => void zoomOut({ duration: reducedMotion ? 0 : 200 })} label="Zoom out">
+            －
+          </ToolButton>
+          <ToolButton
+            onClick={() => void fitView({ padding: 0.15, duration: reducedMotion ? 0 : 400 })}
+            label="Fit to view"
+          >
+            ⤢ Fit
+          </ToolButton>
+          <ToolButton onClick={reset} label="Reset selection and view">
+            ↺ Reset
+          </ToolButton>
           {model.flows.length ? (
             <span className="ml-auto flex flex-wrap items-center gap-2">
               <label className="sr-only" htmlFor={`flow-${model.caseStudy}`}>
@@ -272,7 +329,10 @@ function Explorer({ model, adrs, reducedMotion }: SystemExplorerProps) {
             setSelected((current) => (current === id ? null : id));
           }}
           className="relative h-[26rem] overflow-hidden rounded-lg border border-border bg-bg sm:h-[34rem]"
-          style={{ backgroundImage: 'radial-gradient(var(--color-grid) 1px, transparent 1px)', backgroundSize: '20px 20px' }}
+          style={{
+            backgroundImage: 'radial-gradient(var(--color-grid) 1px, transparent 1px)',
+            backgroundSize: '20px 20px',
+          }}
         >
           <ReactFlow
             nodes={nodes}
@@ -314,9 +374,9 @@ function Explorer({ model, adrs, reducedMotion }: SystemExplorerProps) {
           {flow && step !== null ? `Step ${step + 1} of ${flow.steps.length}: ${flow.steps[step]?.note}` : ''}
         </p>
         <p className="text-xs text-muted">
-          Tip: use <kbd className="font-mono">Tab</kbd> to move between components and <kbd className="font-mono">Enter</kbd> to
-          inspect one, or pick from the component list. Dashed lines are asynchronous; the amber pulse shows causality during
-          playback.
+          Tip: use <kbd className="font-mono">Tab</kbd> to move between components and{' '}
+          <kbd className="font-mono">Enter</kbd> to inspect one, or pick from the component list. Dashed lines are
+          asynchronous; the amber pulse shows causality during playback.
         </p>
       </div>
 
@@ -342,14 +402,20 @@ function Explorer({ model, adrs, reducedMotion }: SystemExplorerProps) {
             </option>
           ))}
         </select>
-        <div className="max-h-[34rem] overflow-y-auto rounded-lg @5xl:max-h-[34rem] border border-border bg-surface p-4" aria-live="polite">
+        <div
+          className="max-h-[34rem] overflow-y-auto rounded-lg border border-border bg-surface p-4 @5xl:max-h-[34rem]"
+          aria-live="polite"
+        >
           {selectedNode ? (
             <NodeDetails node={selectedNode} adrs={adrs} model={model} />
           ) : (
             <div className="text-sm text-muted">
               <p className="font-medium text-fg">{model.title}</p>
               <p className="mt-2">{model.description}</p>
-              <p className="mt-3">Select a component to see its responsibility, technology choice, interfaces, failure modes and the decisions behind it.</p>
+              <p className="mt-3">
+                Select a component to see its responsibility, technology choice, interfaces, failure modes and the
+                decisions behind it.
+              </p>
             </div>
           )}
         </div>
@@ -360,12 +426,16 @@ function Explorer({ model, adrs, reducedMotion }: SystemExplorerProps) {
 
 function NodeDetails({ node, adrs, model }: { node: ExplorerNode; adrs: AdrSummary[]; model: ExplorerModel }) {
   const meta = kindMeta[node.kind];
-  const deps = model.edges.filter((e) => e.source === node.id).map((e) => model.nodes.find((n) => n.id === e.target)?.label);
-  const dependents = model.edges.filter((e) => e.target === node.id).map((e) => model.nodes.find((n) => n.id === e.source)?.label);
+  const deps = model.edges
+    .filter((e) => e.source === node.id)
+    .map((e) => model.nodes.find((n) => n.id === e.target)?.label);
+  const dependents = model.edges
+    .filter((e) => e.target === node.id)
+    .map((e) => model.nodes.find((n) => n.id === e.source)?.label);
   return (
     <div className="space-y-4 text-sm" data-testid="node-details">
       <div>
-        <p className="font-mono text-[0.68rem] uppercase tracking-wider" style={{ color: meta.color }}>
+        <p className="font-mono text-[0.68rem] tracking-wider uppercase" style={{ color: meta.color }}>
           {meta.glyph} {meta.label}
         </p>
         <h4 className="mt-1 font-display text-lg font-semibold">{node.label}</h4>
@@ -374,7 +444,11 @@ function NodeDetails({ node, adrs, model }: { node: ExplorerNode; adrs: AdrSumma
       <Detail term="Responsibility">{node.responsibility}</Detail>
       <Detail term="Why this design">{node.rationale}</Detail>
       <Detail term="Interfaces">
-        <ul className="list-disc space-y-0.5 pl-4">{node.interfaces.map((i) => <li key={i}>{i}</li>)}</ul>
+        <ul className="list-disc space-y-0.5 pl-4">
+          {node.interfaces.map((i) => (
+            <li key={i}>{i}</li>
+          ))}
+        </ul>
       </Detail>
       {deps.length || dependents.length ? (
         <Detail term="Dependencies">
@@ -393,7 +467,11 @@ function NodeDetails({ node, adrs, model }: { node: ExplorerNode; adrs: AdrSumma
         </ul>
       </Detail>
       <Detail term="Security">
-        <ul className="list-disc space-y-0.5 pl-4">{node.security.map((s) => <li key={s}>{s}</li>)}</ul>
+        <ul className="list-disc space-y-0.5 pl-4">
+          {node.security.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ul>
       </Detail>
       {node.adrs.length ? (
         <Detail term="Relevant ADRs">
@@ -422,7 +500,7 @@ function NodeDetails({ node, adrs, model }: { node: ExplorerNode; adrs: AdrSumma
 function Detail({ term, children }: { term: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="font-mono text-[0.68rem] uppercase tracking-wider text-accent">{term}</p>
+      <p className="font-mono text-[0.68rem] tracking-wider text-accent uppercase">{term}</p>
       <div className="mt-1 text-muted">{children}</div>
     </div>
   );

@@ -26,9 +26,20 @@ const MOVE_KEYS: Record<string, [axis: 'forward' | 'right', value: number]> = {
   ArrowRight: ['right', 1],
 };
 
-export function createInput(target: HTMLElement, handlers: { onInteract: () => void; onEscape: () => void; onActivity: () => void }) {
+export function createInput(
+  target: HTMLElement,
+  handlers: { onInteract: () => void; onEscape: () => void; onActivity: () => void },
+) {
   const pressed = new Set<string>();
-  const state: InputState = { forward: 0, right: 0, run: false, jump: false, stick: { x: 0, y: 0 }, yawDelta: 0, pitchDelta: 0 };
+  const state: InputState = {
+    forward: 0,
+    right: 0,
+    run: false,
+    jump: false,
+    stick: { x: 0, y: 0 },
+    yawDelta: 0,
+    pitchDelta: 0,
+  };
 
   const recompute = () => {
     let f = 0;
@@ -41,7 +52,8 @@ export function createInput(target: HTMLElement, handlers: { onInteract: () => v
     }
     state.forward = Math.max(-1, Math.min(1, f + state.stick.y));
     state.right = Math.max(-1, Math.min(1, r + state.stick.x));
-    state.run = pressed.has('ShiftLeft') || pressed.has('ShiftRight') || Math.hypot(state.stick.x, state.stick.y) > 0.92;
+    state.run =
+      pressed.has('ShiftLeft') || pressed.has('ShiftRight') || Math.hypot(state.stick.x, state.stick.y) > 0.92;
   };
 
   const reset = () => {

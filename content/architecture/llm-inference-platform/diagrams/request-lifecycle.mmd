@@ -1,0 +1,21 @@
+sequenceDiagram
+  autonumber
+  participant C as Client
+  participant G as Gateway
+  participant R as Scheduler
+  participant E as Model server
+  C->>G: POST /v1/chat/completions (stream=true)
+  G->>G: authenticate, check tenant token quota
+  G->>R: request + estimated tokens (prompt + max_tokens)
+  alt KV budget available
+    R->>E: admit to running batch
+    E->>E: prefill: process prompt (compute-bound)
+    E-->>C: first token (TTFT)
+    loop decode (memory-bandwidth-bound)
+      E-->>C: next token (inter-token latency)
+    end
+    E->>R: release KV blocks
+  else budget exhausted
+    R-->>G: queue (priority class) or 429 + Retry-After
+  end
+  G->>G: record usage (prompt + completion tokens)
