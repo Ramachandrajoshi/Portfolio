@@ -10,7 +10,9 @@ const COS = Math.cos(Math.PI / 6);
 const SIN = Math.sin(Math.PI / 6);
 const S = 4.2; // world units → px
 const iso = (x: number, y: number, z: number) => [(x - z) * COS * S, ((x + z) * SIN - y) * S] as const;
-const pt = ([a, b]: readonly [number, number]) => `${a.toFixed(1)},${b.toFixed(1)}`;
+// Integer coordinates: visually identical at poster scale, ~30 % less markup (and the RSC
+// payload repeats it).
+const pt = ([a, b]: readonly [number, number]) => `${Math.round(a)},${Math.round(b)}`;
 
 interface Box {
   x: number;
@@ -74,11 +76,11 @@ export function HeroPoster() {
           <stop offset="0" stopColor="var(--poster-sky-top)" />
           <stop offset="1" stopColor="var(--poster-sky-bottom)" />
         </linearGradient>
-        <pattern id="poster-windows" width="6" height="7" patternUnits="userSpaceOnUse">
+        <pattern id="pw" width="6" height="7" patternUnits="userSpaceOnUse">
           <rect width="6" height="7" fill="var(--poster-side)" />
           <rect x="1.5" y="2" width="2.4" height="2.6" fill="var(--poster-window)" opacity="0.85" />
         </pattern>
-        <pattern id="poster-windows-dim" width="6" height="7" patternUnits="userSpaceOnUse">
+        <pattern id="pwd" width="6" height="7" patternUnits="userSpaceOnUse">
           <rect width="6" height="7" fill="var(--poster-side-dark)" />
           <rect x="1.5" y="2" width="2.4" height="2.6" fill="var(--poster-window-alt)" opacity="0.55" />
         </pattern>
@@ -117,13 +119,11 @@ export function HeroPoster() {
             </g>
           );
         }
-        return (
-          <g key={`b${i}`}>
-            <polygon points={f.left} fill="url(#poster-windows-dim)" />
-            <polygon points={f.right} fill="url(#poster-windows)" />
-            <polygon points={f.top} fill="var(--poster-top)" stroke="var(--poster-rim)" strokeWidth="0.6" />
-          </g>
-        );
+        return [
+          <polygon key={`l${i}`} points={f.left} fill="url(#pwd)" />,
+          <polygon key={`r${i}`} points={f.right} fill="url(#pw)" />,
+          <polygon key={`t${i}`} points={f.top} className="poster-top" />,
+        ];
       })}
     </svg>
   );

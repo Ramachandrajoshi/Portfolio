@@ -357,6 +357,11 @@ pre [data-highlighted-line] {
 }
 
 /* Hero poster palette (isometric city), themed with the rest of the tokens. */
+.poster-top {
+  fill: var(--poster-top);
+  stroke: var(--poster-rim);
+  stroke-width: 0.6;
+}
 :root {
   --poster-sky-top: #dfe8f5;
   --poster-sky-bottom: #f5f7fb;

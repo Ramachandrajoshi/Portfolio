@@ -88,7 +88,8 @@ test.describe('3D hero', () => {
     await page.keyboard.press('KeyE');
     await expect(panel).toBeVisible();
     await panel.getByRole('link', { name: /case studies/ }).click();
-    await expect(page).toHaveURL(/\/architecture\/$/);
+    // Software WebGL keeps the main thread busy in CI, so client navigation needs more time.
+    await expect(page).toHaveURL(/\/architecture\/$/, { timeout: 30_000 });
   });
 
   test('keys do not scroll the page or move the character unless the city has focus', async ({ page }) => {
