@@ -1,0 +1,10 @@
+.next
+out
+.velite
+public/generated
+public/og
+pnpm-lock.yaml
+coverage
+playwright-report
+test-results
+content/**/*.mdx

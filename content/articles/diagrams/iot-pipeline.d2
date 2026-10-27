@@ -1,0 +1,33 @@
+# Industrial telemetry pipeline — illustrative reference
+direction: right
+
+classes: {
+  edge: {style.border-radius: 6}
+  store: {shape: cylinder}
+  q: {shape: queue}
+}
+
+site: Plant site {
+  plc: "PLCs / sensors\n[OPC UA, Modbus]" {class: edge}
+  gw: "Edge gateway\n[normalise, buffer,\nstore-and-forward]" {class: edge}
+  plc -> gw: poll / subscribe
+}
+
+cloud: Cloud ingestion {
+  mqtt: "MQTT broker\n[TLS, per-device certs]" {class: q}
+  ingest: "Ingestion service\n[validate, enrich,\nde-duplicate]" {class: edge}
+  stream: "Stream processor\n[alarms, windows]" {class: edge}
+  mqtt -> ingest: shared subscription
+  ingest -> stream: events
+}
+
+storage: Storage {
+  ts: "TimescaleDB\n[hypertables,\ncontinuous aggregates]" {class: store}
+  obj: "Object storage\n[raw batches, files]" {class: store}
+}
+
+site.gw -> cloud.mqtt: "MQTT 5, QoS 1" {style.stroke-dash: 4}
+cloud.ingest -> storage.ts: batched inserts
+cloud.ingest -> storage.obj: raw archive
+cloud.stream -> alerts: alarm events
+alerts: "Alarm service\n[notify, acknowledge]" {class: edge}

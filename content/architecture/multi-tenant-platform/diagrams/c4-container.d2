@@ -1,0 +1,56 @@
+# C4 Level 2 — Containers: Multi-tenant enterprise platform (illustrative reference architecture)
+direction: down
+
+classes: {
+  container: {style.border-radius: 8}
+  db: {shape: cylinder}
+  queue: {shape: queue}
+  external: {style.stroke-dash: 4; style.border-radius: 8}
+}
+
+clients: Clients {
+  spa: "Web application\n[SPA]" {class: container}
+  partner: "Partner systems\n[External]" {class: external}
+}
+
+edge: Edge (DMZ) {
+  gateway: "API gateway\n[TLS, WAF, per-tenant rate limits]" {class: container}
+}
+
+app: Application tier (stateless, horizontally scaled) {
+  api: "Platform API\n[.NET, ASP.NET Core]\nTenant resolution, domain logic" {class: container}
+  workers: "Background workers\n[.NET worker service]\nJobs, exports, provisioning" {class: container}
+  migrator: "Migration orchestrator\n[.NET worker]\nWave-based schema rollout" {class: container}
+}
+
+control: Control plane {
+  catalog: "Tenant catalogue\n[PostgreSQL, HA]\nTenants, shards, schema versions,\nfeature flags, global config" {class: db}
+  cache: "Resolution cache + pub/sub\n[Redis]" {class: db}
+  secrets: "Secret store\n[Vault / cloud KMS]" {class: container}
+}
+
+data: Tenant data plane {
+  bouncer: "Connection pooler\n[PgBouncer, transaction mode]" {class: container}
+  shard_a: "Shard A\n[PostgreSQL cluster]\ntenant_001 … tenant_n" {class: db}
+  shard_b: "Shard B\n[PostgreSQL cluster]\ntenant_n+1 …" {class: db}
+}
+
+broker: "Message broker\n[RabbitMQ]" {class: queue}
+otel: "Telemetry pipeline\n[OpenTelemetry collector]" {class: container}
+
+clients.spa -> edge.gateway: HTTPS + OIDC token
+clients.partner -> edge.gateway: HTTPS + client credentials
+edge.gateway -> app.api: HTTP (tenant host + token)
+app.api -> control.cache: Lookup tenant record
+app.api -> control.catalog: Resolve on cache miss
+app.api -> control.secrets: Fetch tenant DB credentials
+app.api -> data.bouncer: SQL (tenant DB)
+data.bouncer -> data.shard_a
+data.bouncer -> data.shard_b
+app.api -> broker: Publish jobs {style.stroke-dash: 4}
+broker -> app.workers: Consume jobs {style.stroke-dash: 4}
+app.workers -> data.bouncer: SQL (tenant DB)
+app.migrator -> control.catalog: Read waves, record versions
+app.migrator -> data.bouncer: Apply migrations
+app.migrator -> control.cache: Publish invalidation {style.stroke-dash: 4}
+app.api -> otel: Traces, metrics, logs {style.stroke-dash: 4}

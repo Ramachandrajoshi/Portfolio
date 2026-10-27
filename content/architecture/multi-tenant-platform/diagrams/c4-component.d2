@@ -1,0 +1,39 @@
+# C4 Level 3 — Components inside the Platform API (illustrative reference architecture)
+direction: down
+
+classes: {
+  comp: {style.border-radius: 6}
+  ext: {style.stroke-dash: 4; style.border-radius: 6}
+  db: {shape: cylinder}
+}
+
+api: "Platform API [.NET]" {
+  auth: "Authentication middleware\nValidates OIDC token, extracts tid claim" {class: comp}
+  resolver: "Tenant resolution middleware\nHost ↔ tid cross-check, status gate" {class: comp}
+  ctx: "TenantContext (scoped)\nImmutable per request" {class: comp}
+  limiter: "Tenant bulkheads\nPer-tenant concurrency + circuit breakers" {class: comp}
+  endpoints: "Endpoints / application services" {class: comp}
+  tenant_repo: "Tenant repositories\nTenantDbContext only" {class: comp}
+  catalog_repo: "Catalogue repositories\nCatalogDbContext only" {class: comp}
+  factory: "TenantDbContextFactory\nBuilds connection from TenantContext" {class: comp}
+  cache_client: "Tenant record cache\nTTL + pub/sub invalidation,\nstale-if-error" {class: comp}
+
+  auth -> resolver: Principal
+  resolver -> cache_client: Get tenant record
+  resolver -> ctx: Populate
+  resolver -> limiter: Admit request
+  limiter -> endpoints
+  endpoints -> tenant_repo: Tenant data
+  endpoints -> catalog_repo: Global config (read-only)
+  tenant_repo -> factory: Create context
+  factory -> ctx: Read tenant id, shard, credentials ref
+}
+
+redis: "Redis" {class: db}
+catalog: "Tenant catalogue" {class: db}
+tenantdb: "Tenant database\n(via PgBouncer)" {class: db}
+
+api.cache_client -> redis: GET / SUBSCRIBE
+api.cache_client -> catalog: On miss
+api.catalog_repo -> catalog: SQL (read-only role)
+api.factory -> tenantdb: SQL (tenant role)

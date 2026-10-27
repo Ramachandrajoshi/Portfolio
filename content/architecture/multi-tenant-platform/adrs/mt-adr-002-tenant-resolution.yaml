@@ -1,0 +1,36 @@
+id: MT-ADR-002
+title: Resolve the tenant from the authenticated token and verify it against the host
+status: accepted
+date: 2026-09-01
+caseStudy: multi-tenant-platform
+context: >-
+  Every request must be bound to exactly one tenant before any data access. The legacy code accepts a
+  tenant identifier from several places (query string, headers, request bodies), which makes it possible
+  for a caller to address another tenant's data if any single check is missed.
+decision: >-
+  The tenant is taken only from the validated token's tenant claim (tid). The request host must map to
+  the same tenant in the catalogue; a mismatch is rejected with 403 and audited. Resolution happens once,
+  in middleware, and produces an immutable, request-scoped TenantContext. Request payloads never carry a
+  tenant identifier that the server trusts.
+alternatives:
+  - option: Host name only
+    summary: Derive the tenant from the subdomain.
+    rejectedBecause: Partner integrations call a shared API host; and a host alone is not proof of membership.
+  - option: Explicit tenant header (X-Tenant-Id)
+    summary: Clients send the tenant they want to act on.
+    rejectedBecause: >-
+      Trusting client-chosen identifiers moves the isolation boundary into every authorisation check;
+      it is the pattern the modernisation is meant to remove.
+consequences:
+  positive:
+    - One choke point to review, test and fuzz for isolation.
+    - Downstream code receives a TenantContext and cannot choose a tenant itself.
+    - Host/claim mismatches become an observable security signal.
+  negative:
+    - Users who belong to multiple tenants need an explicit tenant-switch flow (re-issue token).
+    - Background jobs must carry the tenant in the message envelope and re-establish context explicitly.
+risks:
+  - Middleware ordering mistakes could let an endpoint run before resolution; mitigated with an endpoint
+    filter that fails closed when TenantContext is absent.
+followUps:
+  - Architecture test asserting no controller or handler accepts a parameter named like tenantId.

@@ -1,0 +1,39 @@
+id: MT-ADR-003
+title: Expand/contract schema changes rolled out per tenant in waves
+status: accepted
+date: 2026-09-08
+caseStudy: multi-tenant-platform
+context: >-
+  With one database per tenant, a release cannot assume all tenant databases are at the same schema
+  version at the same moment. Applying migrations synchronously during deployment would couple release
+  duration to tenant count and turn one failing tenant migration into a failed release for everyone.
+decision: >-
+  Schema changes follow expand/contract: an "expand" migration only adds (nullable columns, new tables,
+  dual writes) and is compatible with application versions N and N+1; the "contract" migration removes
+  old structures one release later. A migration orchestrator applies migrations tenant by tenant in
+  waves (internal tenants, canary tenants, then the fleet), records each tenant's schema version in the
+  catalogue, and halts a wave automatically when the failure rate exceeds a threshold. The API declares
+  the schema-version range it supports and places tenants outside it in a maintenance state (503 with
+  Retry-After) instead of running against an incompatible schema.
+alternatives:
+  - option: Migrate every tenant during deployment
+    summary: The release pipeline runs migrations against all tenant databases before switching traffic.
+    rejectedBecause: Release time grows with tenant count and one bad tenant blocks the whole fleet.
+  - option: Migrate lazily on first request
+    summary: The application migrates a tenant's database when it is first accessed after a release.
+    rejectedBecause: >-
+      Puts long-running DDL on the request path, races between instances, and makes failures surface to
+      end users instead of operators.
+consequences:
+  positive:
+    - Releases are decoupled from migration progress; rollouts can pause and resume.
+    - Blast radius of a faulty migration is limited to the current wave.
+    - Version skew is explicit, queryable state in the catalogue.
+  negative:
+    - Every breaking change costs two releases and temporary dual-write code.
+    - The compatibility window must be tested — the application is exercised against N-1 and N schemas.
+risks:
+  - Long-running data backfills inside "expand" migrations can lock large tenant tables; they must run
+    as batched background jobs, not DDL transactions.
+followUps:
+  - CI job running the integration suite against both the previous and current schema version.

@@ -1,0 +1,392 @@
+---
+title: Multi-Tenant Platform — Database per Tenant, Shared Control Plane
+summary: >-
+  Modernising a per-customer deployment estate into one shared application tier with a database per
+  tenant, a highly available tenant catalogue, and the guardrails that keep isolation, migrations and
+  connections under control.
+domain: Enterprise application architecture
+order: 1
+provenance: illustrative
+status: complete
+date: 2026-09-20
+tags: [multi-tenancy, dotnet, postgresql, modernisation, api-design]
+problem: >-
+  How do you move from one deployment per customer to a shared platform without weakening data
+  isolation or stopping the business while you do it?
+qualityAttributes:
+  - attribute: Tenant isolation
+    scenario: A defect in any endpoint or repository attempts to read data belonging to a tenant other than the caller's.
+    measure: Zero cross-tenant reads in the automated isolation suite on every build; host/claim mismatches rejected (403) and audited.
+    basis: requirement
+  - attribute: Failure isolation
+    scenario: One tenant database becomes unavailable during business hours.
+    measure: Error rate and p95 latency for other tenants on the same shard stay within their SLO (illustrative SLO — p95 < 400 ms, errors < 0.5 %).
+    basis: target
+  - attribute: Deployability
+    scenario: A release contains a breaking schema change.
+    measure: Release completes without waiting for fleet-wide migration; tenants on N-1 schema keep working; a failed migration affects only its wave.
+    basis: requirement
+  - attribute: Fairness (noisy neighbour)
+    scenario: One tenant generates 10× its normal request rate.
+    measure: The tenant is throttled (429) at the gateway; other tenants' p95 latency degrades by less than 10 % in the skewed load test.
+    basis: target
+  - attribute: Recoverability
+    scenario: A tenant needs its data restored to a point in time after an operator error.
+    measure: Restore of one tenant without affecting others; RPO ≤ 5 min, RTO ≤ 1 h for a median-sized tenant (assumed tenant size — to be validated).
+    basis: design-assumption
+  - attribute: Modifiability
+    scenario: A legacy module is migrated into the shared platform.
+    measure: Module adopts TenantContext and the separated data-access contexts; architecture tests pass with no new suppressions.
+    basis: requirement
+diagrams:
+  - level: context
+    src: architecture/multi-tenant-platform/diagrams/c4-context
+    title: System context
+    description: Tenant users, tenant administrators and platform operators use the platform; it delegates authentication to an OIDC identity provider, serves partner integrations and exports de-identified data to an analytics warehouse.
+  - level: container
+    src: architecture/multi-tenant-platform/diagrams/c4-container
+    title: Containers
+    description: Clients reach a gateway, then a stateless .NET API and workers. A control plane (tenant catalogue, Redis cache, secret store) decides which tenant database to use; tenant databases live on PostgreSQL shards behind PgBouncer. A migration orchestrator rolls out schema changes in waves.
+  - level: component
+    src: architecture/multi-tenant-platform/diagrams/c4-component
+    title: Components of the Platform API
+    description: Authentication middleware feeds tenant-resolution middleware, which populates an immutable TenantContext and admits the request through per-tenant bulkheads. Tenant repositories use only TenantDbContext, built by a factory from TenantContext; catalogue repositories use only CatalogDbContext.
+---
+
+<Callout type="important" title="About this case study">
+  This is an **illustrative reference architecture**. It reflects the shape of problems I work on —
+  multi-tenant enterprise systems, legacy modernisation, .NET and PostgreSQL — but it does not describe
+  any specific employer or client system, and it contains no confidential detail. Every number below is
+  a requirement, a target or a design assumption, and is labelled as such. Nothing here is a measured
+  production result.
+</Callout>
+
+## 1. Context and business problem
+
+A B2B software product began life as a single-tenant application. Every new customer got their own
+deployment: an application server, a database, configuration files and — over the years — a few
+customer-specific patches. That model was simple when there were five customers. With many more, it
+has become the main constraint on the business:
+
+- **Releases fan out.** Shipping a fix means upgrading N separate stacks. In practice customers drift
+  across several versions, and support has to reason about which bug exists where.
+- **Configuration drift causes incidents.** The most common root cause in post-incident reviews is a
+  difference between deployments, not a defect in the code.
+- **Onboarding is a project.** Provisioning a new customer takes days of manual infrastructure work.
+- **Cost grows linearly** with customers, while most customers use a small fraction of their stack.
+
+The business wants **one platform, many tenants** — while keeping the property customers were
+promised and are audited on: *their data is physically separate from everyone else's.*
+
+## 2. Requirements and constraints
+
+The constraints matter more than the requirements; they eliminate most of the design space.
+
+| Constraint | Consequence for the design |
+| --- | --- |
+| Contracts promise physically separated customer data. | Shared tables with a `tenant_id` column are not acceptable as the primary isolation mechanism. |
+| Some tenants require a specific region or dedicated hosting. | Tenant placement must be data (configurable per tenant), not code. |
+| The product cannot be frozen during modernisation. | The migration must be incremental: legacy deployments and the new platform coexist for a long time. |
+| Existing customer databases hold years of data. | Prefer *registering* existing databases over copying their data into a new structure. |
+| The team knows .NET and PostgreSQL well. | Favour designs that fit the existing skills and operational tooling. |
+| A small platform team operates everything. | Automate the per-tenant operations that become frequent: provisioning, migration, relocation. |
+
+## 3. Functional and non-functional requirements
+
+**Functional**
+
+1. Serve every tenant from one shared, horizontally scaled application tier.
+2. Bind every request and every background job to exactly one tenant before any data access.
+3. Provision, suspend, relocate and decommission tenants through automated workflows.
+4. Keep shared reference data (global configuration, feature definitions) in one place, with
+   per-tenant overrides.
+5. Support tenant-level backup and point-in-time restore.
+6. Provide cross-tenant reporting for the vendor without live cross-database queries.
+
+**Non-functional** — expressed as measurable quality-attribute scenarios:
+
+<QualityAttributes />
+
+## 4. Quality attributes and acceptance criteria
+
+The table above is the contract for the design. Three attributes dominate, and they pull against each
+other:
+
+- **Isolation** pushes towards *more* separation (separate databases, credentials, keys).
+- **Operability** pushes towards *less* separation (fewer things to migrate, monitor and pay for).
+- **Deployability** demands that releases do not wait for, or fail because of, individual tenants.
+
+Every decision in this case study is a position on that triangle, and each one records which corner it
+gives up.
+
+## 5. Architecture and system boundaries
+
+The system is split into two planes:
+
+- The **control plane** answers *"who is this tenant, where does their data live, which version are
+  they on, and are they allowed in?"* It consists of the tenant catalogue (PostgreSQL, highly
+  available), a resolution cache (Redis) and a secret store.
+- The **data plane** holds tenant data: one PostgreSQL database per tenant, placed on shared clusters
+  (shards), reached through PgBouncer.
+
+Between them sits a **stateless application tier** — the Platform API, background workers and a
+migration orchestrator — that holds no tenant-specific state of its own. Tenancy becomes a row in the
+catalogue rather than a deployment.
+
+The boundaries that matter most are **trust boundaries**, not deployment boundaries: the edge (where
+untrusted input arrives), the tenant-resolution middleware (where a request acquires a tenant), and
+the data-access layer (where a tenant becomes a database connection).
+
+## 6. Context, container and component views
+
+The C4 views are generated at build time from D2 source files committed next to this case study.
+
+<C4Views />
+
+### Explore the system
+
+Select a component to see its responsibility, technology, interfaces, failure modes and the decisions
+behind it — or play a scenario to watch causality flow through the system.
+
+<ArchitectureDiagram system="multi-tenant-platform" />
+
+## 7. Important design decisions
+
+Five decisions carry the design. Each is recorded as an ADR with its context, alternatives and
+consequences.
+
+<ADR id="MT-ADR-001" />
+
+<ADR id="MT-ADR-002" />
+
+The request pipeline that implements MT-ADR-002 is deliberately small. A sketch of the
+resolution middleware:
+
+```csharp
+public sealed class TenantResolutionMiddleware(RequestDelegate next, ITenantDirectory directory)
+{
+    public async Task InvokeAsync(HttpContext http, TenantContextAccessor accessor)
+    {
+        // 1. The only trusted source of tenancy is the validated token.
+        var claim = http.User.FindFirst("tid")?.Value;
+        if (claim is null) { http.Response.StatusCode = 401; return; }
+
+        // 2. The host must map to the same tenant — defends against token reuse across tenants.
+        var tenant = await directory.FindAsync(TenantId.Parse(claim), http.RequestAborted);
+        if (tenant is null || !tenant.Hosts.Contains(http.Request.Host.Host))
+        {
+            SecurityAudit.TenantMismatch(http, claim);
+            http.Response.StatusCode = 403; return;
+        }
+
+        // 3. Lifecycle and schema-compatibility gates fail closed.
+        if (tenant.Status != TenantStatus.Active || !SchemaWindow.Supports(tenant.SchemaVersion))
+        {
+            http.Response.Headers.RetryAfter = "120";
+            http.Response.StatusCode = 503; return;
+        }
+
+        accessor.Set(TenantContext.From(tenant)); // immutable for the rest of the request
+        await next(http);
+    }
+}
+```
+
+<ADR id="MT-ADR-003" />
+
+<ADR id="MT-ADR-004" />
+
+<ADR id="MT-ADR-005" />
+
+## 8. Alternatives considered
+
+The central choice is the tenancy model. Four options were evaluated against the constraints in
+section 2, not against an abstract notion of "best".
+
+<Tradeoffs
+  title="Tenancy model"
+  criteria="Contractual physical isolation; incremental migration of existing databases; per-tenant restore and residency; operational cost with a small team."
+  options={[
+    {
+      name: "Shared schema + row-level security",
+      benefits: ["Lowest cost per tenant", "One schema to migrate", "Cross-tenant analytics with plain SQL"],
+      drawbacks: ["Isolation depends on every policy and query path", "Per-tenant restore and residency are hard", "Requires a big-bang data migration from existing databases"],
+      chooseWhen: "Many small tenants, no contractual physical isolation, greenfield system."
+    },
+    {
+      name: "Schema per tenant",
+      benefits: ["Logical separation", "Single database to operate"],
+      drawbacks: ["Catalog bloat and slow migrations at scale", "Restore and relocation still awkward", "One database is a shared blast radius"],
+      chooseWhen: "Tens of tenants, moderate isolation needs, limited operational tooling."
+    },
+    {
+      name: "Database per tenant on shared clusters",
+      benefits: ["Physical isolation", "Per-tenant restore, keys, residency", "Existing databases registered, not rewritten", "Hot tenants relocatable"],
+      drawbacks: ["Fleet-wide migrations need orchestration", "Connection management is harder", "Cross-tenant reporting needs an export"],
+      chooseWhen: "Isolation is contractual, tenants vary widely in size, and an incremental path matters.",
+      selected: true
+    },
+    {
+      name: "Stack per tenant (status quo)",
+      benefits: ["Maximum isolation", "No shared failure domain"],
+      drawbacks: ["Cost and release effort grow linearly", "Configuration drift", "Slow onboarding"],
+      chooseWhen: "A handful of very large tenants with dedicated budgets."
+    }
+  ]}
+/>
+
+## 9. Trade-offs and rejected alternatives
+
+Choosing database-per-tenant moves complexity rather than removing it. The trade-offs are explicit:
+
+- **Migrations become a fleet operation.** Accepted, and contained by expand/contract and waves
+  (MT-ADR-003). The price is that every breaking change takes two releases.
+- **Connections become a capacity problem.** Accepted, and contained by PgBouncer and shard placement
+  (MT-ADR-005). The price is giving up session-level PostgreSQL features on tenant connections.
+- **Cross-tenant questions need a pipeline.** Accepted — a nightly, incremental, de-identified export
+  is a feature for privacy, not just a workaround.
+- **The catalogue is a new critical dependency.** Accepted, and contained by caching with
+  *stale-if-error*: if the catalogue is unavailable, instances keep serving tenants they have already
+  resolved for a bounded period, trading freshness of configuration for availability.
+
+Two tempting ideas were rejected outright:
+
+- **Lazy, on-request migrations** — they put DDL on the request path and turn an operator problem into
+  a customer-visible one.
+- **A "tenant" header chosen by the client** — it would move the isolation boundary into every
+  authorisation check in the codebase.
+
+## 10. Security and trust boundaries
+
+Isolation is layered so that no single mistake leaks data:
+
+1. **Identity.** The tenant comes only from a signed token claim, cross-checked against the host
+   (MT-ADR-002). Mismatches are rejected and audited as security events.
+2. **Context.** Resolution produces an immutable, request-scoped `TenantContext`; an endpoint filter
+   fails closed if it is missing. Background jobs re-establish context from the message envelope and
+   re-verify it against the catalogue.
+3. **Data access.** Tenant repositories can only obtain a `TenantDbContext` from a factory that reads
+   `TenantContext` (MT-ADR-004); architecture tests enforce the boundary.
+4. **Credentials.** Each tenant database has its own role and credentials, issued from the secret store
+   through workload identity. Even a resolution bug cannot use one tenant's connection to read another
+   tenant's database.
+5. **Storage.** Encryption at rest per database; premium tenants can have their own keys.
+6. **Egress.** Exports to analytics are de-identified before leaving the data plane.
+
+Threats considered explicitly: token replay across tenant hosts, tenant enumeration via error
+messages (responses are uniform), privilege escalation through the provisioning workflow (separate
+role, audited), and data leaks through logs (PII-scrubbing processor in the telemetry pipeline).
+
+## 11. Failure modes and recovery behaviour
+
+<Tradeoffs
+  title="Failure modes and their containment"
+  columns={{ option: "Failure", benefits: "Containment", drawbacks: "Impact", chooseWhen: "Detection & recovery" }}
+  options={[
+    {
+      name: "One tenant database down",
+      benefits: ["Per-tenant circuit breaker opens", "Other tenants keep their connections and threads"],
+      drawbacks: ["Affected tenant sees 503 until recovery"],
+      chooseWhen: "Detection: breaker state + per-tenant error-rate alert. Recovery: cluster failover or restore of that tenant only."
+    },
+    {
+      name: "Catalogue unavailable",
+      benefits: ["Cached tenant records keep serving (stale-if-error, bounded)", "No data-plane impact"],
+      drawbacks: ["No onboarding or configuration changes", "Uncached tenants cannot be resolved"],
+      chooseWhen: "Detection: resolution latency and miss errors. Recovery: synchronous-replica failover."
+    },
+    {
+      name: "Migration fails for some tenants",
+      benefits: ["Wave halts above threshold", "Tenants stay on N-1, which the app still supports"],
+      drawbacks: ["Version skew persists until an operator acts"],
+      chooseWhen: "Detection: orchestrator report per wave. Recovery: fix forward, re-run for failed tenants only."
+    },
+    {
+      name: "Noisy tenant",
+      benefits: ["Gateway rate limit and API bulkhead throttle only that tenant"],
+      drawbacks: ["The tenant's own users see 429s"],
+      chooseWhen: "Detection: per-tenant request rate and PgBouncer queue wait. Recovery: relocate to a quieter shard if sustained."
+    }
+  ]}
+/>
+
+The general rule: **every shared resource has a per-tenant limit**, so failure and overload stay
+attached to the tenant that caused them.
+
+## 12. Scalability and performance reasoning
+
+The interesting scaling limit is not CPU — the application tier scales horizontally — it is
+**database connections**. A first-principles estimate shows why MT-ADR-005 is necessary.
+
+<Callout type="assumption" title="Design assumptions — not measurements">
+  The figures below are inputs chosen to reason about the design (400 tenants, 8 API instances,
+  default-like client pools). They are not measurements of any real system. Real values come from the
+  load test described in section 14.
+</Callout>
+
+**Without a pooler**, client pools multiply:
+
+- 400 tenants × 8 instances × a pool of up to 10 connections = **32,000** potential connections.
+- PostgreSQL uses a process per connection; practical `max_connections` per cluster is in the low
+  hundreds before memory and context switching dominate.
+
+**With PgBouncer in transaction mode**, server connections are bounded by what is *active*, not by
+what is *configured*:
+
+- Suppose at peak 25 % of tenants are active and each needs ~3 concurrent transactions:
+  400 × 0.25 × 3 = **300** server connections across the fleet.
+- Split over two shards, that is ~150 per cluster — inside a sensible budget, with headroom.
+- Adding tenants means adding shards at a planned density, not raising `max_connections`.
+
+This estimate also tells you *what to measure*: the ratio of active tenants at peak and transactions
+per active tenant. If either is much higher than assumed, shard density must fall.
+
+Two other scaling concerns:
+
+- **Tenant resolution** happens on every request, so it must be a memory lookup in the steady state;
+  the catalogue sees only cache misses and invalidations.
+- **Migration duration** grows with the number of tenants, but no longer blocks releases. Waves run
+  with bounded parallelism to avoid saturating any one shard.
+
+## 13. Observability and operational considerations
+
+- **Tenant-aware telemetry.** Traces and logs carry `tenant.id`; metrics carry `tenant.tier` and
+  `shard` rather than the tenant id, to keep metric cardinality bounded. Exemplars link a slow metric
+  bucket to a trace with the tenant id.
+- **Per-tenant golden signals** for the largest tenants and per-shard signals for everyone else:
+  request rate, error rate, p95 latency, PgBouncer queue wait, breaker state.
+- **Fleet state is queryable.** "Which tenants are on which schema version, on which shard, in which
+  status?" is a catalogue query, and a dashboard.
+- **Runbooks as automation.** Relocating a tenant, re-running a failed migration and suspending a tenant
+  are orchestrator commands with audit trails, not manual procedures.
+
+## 14. Testing and validation strategy
+
+| Risk | Test | When |
+| --- | --- | --- |
+| Cross-tenant data access | Isolation suite: two tenants provisioned in Testcontainers; every API endpoint called as tenant A with identifiers belonging to tenant B must return 403/404 and touch no B data. | Every build |
+| Boundary erosion | Architecture tests for data-access contexts, forbidden `tenantId` parameters, direct connection construction. | Every build |
+| Schema skew | Integration suite run against both N-1 and N schema versions. | Every build |
+| Migration safety | Each migration applied to anonymised snapshots of the largest and oldest tenant schemas; duration and lock behaviour recorded. | Before each release |
+| Noisy neighbour | Load test with a Zipf-distributed tenant mix plus one tenant at 10× load; verify the fairness criterion in section 3. | Before go-live, then monthly |
+| Failure isolation | Chaos test: stop one tenant database and the catalogue primary in turn; verify the containment table above. | Before go-live, then quarterly |
+
+## 15. Outcomes and lessons learned
+
+**Outcomes.** This reference architecture has not been measured in production, so it claims no
+results. Success would be demonstrated by the acceptance criteria in the quality-attribute table and
+the validation plan above: zero isolation-suite failures, releases that no longer wait on migrations,
+and noisy-neighbour behaviour within the fairness target under a skewed load test.
+
+**Lessons — the reasoning I would carry into any similar system:**
+
+- *Start from the promises already made to customers.* The isolation contract eliminated half the
+  design space before any technology discussion.
+- *Make tenancy data, not infrastructure.* Once placement, version and status are rows in a catalogue,
+  most operational work becomes automatable.
+- *Every shared resource needs a per-tenant limit.* Otherwise multi-tenancy turns one customer's bad
+  day into everyone's.
+- *Make boundaries executable.* Architecture tests are cheap compared with the cost of a cross-tenant
+  incident discovered by a customer.
+- *Do the capacity arithmetic early.* Connection count, not CPU, was the constraint — and a ten-line
+  estimate revealed it before any load test.

@@ -1,0 +1,43 @@
+# C4 Level 1 — System Context: Multi-tenant enterprise platform (illustrative reference architecture)
+direction: right
+
+classes: {
+  person: {shape: c4-person}
+  system: {style.border-radius: 8; style.stroke-width: 2}
+  external: {style.stroke-dash: 4; style.border-radius: 8}
+}
+
+tenant_user: Tenant user {
+  class: person
+}
+tenant_admin: Tenant administrator {
+  class: person
+}
+platform_ops: Platform operations {
+  class: person
+}
+
+platform: Multi-tenant platform {
+  class: system
+  label: "Multi-tenant platform\n[Software system]\nOne application tier, one database per tenant,\nshared control-plane catalogue"
+}
+
+idp: Identity provider {
+  class: external
+  label: "Identity provider\n[External, OIDC]"
+}
+integrations: Partner integrations {
+  class: external
+  label: "Partner integrations\n[External, REST + webhooks]"
+}
+warehouse: Analytics warehouse {
+  class: external
+  label: "Analytics warehouse\n[External]"
+}
+
+tenant_user -> platform: Uses (HTTPS)
+tenant_admin -> platform: Configures tenant, users, features
+platform_ops -> platform: Onboards tenants, rolls out schema versions
+platform -> idp: Delegates authentication (OIDC)
+integrations -> platform: Calls tenant-scoped APIs (OAuth2 client credentials)
+platform -> warehouse: Exports de-identified, tenant-tagged facts (batch)

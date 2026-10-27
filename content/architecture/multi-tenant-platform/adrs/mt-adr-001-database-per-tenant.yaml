@@ -1,0 +1,49 @@
+id: MT-ADR-001
+title: One database per tenant, with a shared control-plane catalogue
+status: accepted
+date: 2026-09-01
+caseStudy: multi-tenant-platform
+context: >-
+  Tenants are organisations with contractual data-isolation requirements; a minority need dedicated
+  hosting or a specific region, some need point-in-time restore of their data alone, and per-tenant
+  data volumes differ by orders of magnitude. The legacy estate already runs one database per customer
+  deployment, so tenant data is physically separated today and customers' assurances depend on it.
+decision: >-
+  Keep one PostgreSQL database per tenant, placed on shared clusters ("shards"), and introduce a single
+  highly available catalogue database that owns tenant identity, lifecycle status, shard placement,
+  schema version, feature flags and global configuration. The application tier becomes shared and
+  stateless; it selects the tenant database per request from the catalogue.
+alternatives:
+  - option: Shared schema with a tenant_id column and row-level security
+    summary: All tenants in the same tables; PostgreSQL RLS policies filter by the session's tenant.
+    rejectedBecause: >-
+      Isolation would depend on every query path and every policy being correct; per-tenant restore,
+      residency and dedicated hosting become hard; migrating existing per-customer databases into shared
+      tables is a large, risky data migration with no incremental path.
+  - option: Schema per tenant in one database
+    summary: Each tenant gets a PostgreSQL schema; the search_path selects the tenant.
+    rejectedBecause: >-
+      Catalog bloat and migration time grow with tenant count inside one database; per-tenant restore
+      and relocation are still awkward; a single database remains a shared blast radius.
+  - option: Keep fully separate deployments per customer
+    summary: Status quo — one application and database stack per customer.
+    rejectedBecause: >-
+      Operational cost grows linearly with customers; releases fan out to N stacks; drift between
+      deployments is already the main source of incidents.
+consequences:
+  positive:
+    - Physical isolation preserved; a query bug cannot read another tenant's rows through the same connection.
+    - Per-tenant backup, restore, relocation, residency and encryption keys are natural operations.
+    - Incremental migration path — existing customer databases are registered, not rewritten.
+    - Noisy tenants can be moved to their own shard without code changes.
+  negative:
+    - Schema migrations must be orchestrated across many databases (see MT-ADR-003).
+    - Connection management becomes a first-class concern (see MT-ADR-005).
+    - Cross-tenant reporting needs an export pipeline instead of a SQL query.
+    - The catalogue is a new critical dependency that must be highly available.
+risks:
+  - Catalogue outage blocks resolution of tenants not already cached.
+  - Per-database fixed overhead makes very small tenants comparatively expensive.
+followUps:
+  - Define the shard-placement policy (capacity headroom, residency, tier).
+  - Load-test catalogue resolution with cold caches after a full fleet restart.

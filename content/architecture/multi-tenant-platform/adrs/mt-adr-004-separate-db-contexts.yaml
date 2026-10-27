@@ -1,0 +1,33 @@
+id: MT-ADR-004
+title: Separate data-access contexts for catalogue and tenant data, enforced by architecture tests
+status: accepted
+date: 2026-09-08
+caseStudy: multi-tenant-platform
+context: >-
+  Global configuration (catalogue) and tenant data live in different databases with different
+  credentials. In the legacy codebase, repositories freely mix global and customer data in one unit of
+  work, which hides cross-database coupling and makes it unclear which identity a query runs under.
+decision: >-
+  Two distinct EF Core contexts: CatalogDbContext (read-mostly, catalogue role) and TenantDbContext
+  (built by a factory from the request's TenantContext, tenant role). Repositories depend on exactly one
+  of them. Architecture tests (e.g. NetArchTest) fail the build if a tenant repository references the
+  catalogue context or vice versa, or if any code constructs a TenantDbContext outside the factory.
+alternatives:
+  - option: One context with two connection strings switched at runtime
+    summary: A single DbContext type whose connection is swapped depending on the operation.
+    rejectedBecause: Makes the identity of each query implicit and impossible to check statically.
+  - option: Convention and code review only
+    summary: Document the boundary and rely on reviewers.
+    rejectedBecause: Boundaries that are not executable erode, especially during a long modernisation.
+consequences:
+  positive:
+    - Which database and which credentials a query uses is visible in the type system.
+    - Violations fail fast in CI instead of surfacing as production incidents.
+  negative:
+    - Operations that genuinely span both (e.g. tenant provisioning) need explicit orchestration code
+      without a shared transaction.
+risks:
+  - Teams may work around the rule with raw SQL; the architecture test also flags direct
+    NpgsqlConnection construction outside the infrastructure layer.
+followUps:
+  - Add the rules to the modernisation playbook so legacy modules adopt them as they are migrated.

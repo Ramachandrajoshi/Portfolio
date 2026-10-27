@@ -1,0 +1,204 @@
+/*
+ * Design tokens — single source of truth for colour, type, spacing, radii, elevation,
+ * motion and focus. Components consume these through Tailwind theme variables
+ * (see globals.css) or directly as CSS custom properties.
+ *
+ * Theme resolution:
+ *   1. <html data-theme="light|dark"> set before first paint by the inline theme script.
+ *   2. Without JavaScript, prefers-color-scheme decides.
+ * Dark is the primary identity ("night city"); light is the "blueprint" variant.
+ *
+ * The 3D scene reads its palette from src/design/palette.ts; a unit test keeps the two
+ * in sync (tests/unit/tokens.test.ts).
+ */
+
+:root {
+  /* ── Raw palette ─────────────────────────────────────────── */
+  --navy-950: #050811;
+  --navy-900: #070b16;
+  --navy-850: #0b1120;
+  --navy-800: #0f172a;
+  --graphite-700: #1c2538;
+  --graphite-600: #2a3550;
+  --slate-400: #94a3b8;
+  --slate-200: #e2e8f0;
+  --cyan-300: #67e8f9;
+  --cyan-400: #22d3ee;
+  --cyan-700: #0e7490;
+  --blue-400: #60a5fa;
+  --blue-500: #3b82f6;
+  --blue-700: #1d4ed8;
+  --violet-400: #a78bfa;
+  --violet-700: #6d28d9;
+  --amber-400: #f5b544;
+  --amber-700: #b45309;
+  --red-400: #f87171;
+  --red-700: #b91c1c;
+  --green-400: #4ade80;
+  --green-700: #15803d;
+
+  /* ── Typography ──────────────────────────────────────────── */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: clamp(2rem, 1.6rem + 1.8vw, 2.75rem);
+  --text-5xl: clamp(2.5rem, 1.8rem + 3.2vw, 4rem);
+  --leading-tight: 1.15;
+  --leading-normal: 1.6;
+  --leading-relaxed: 1.75;
+  --tracking-tight: -0.02em;
+  --tracking-wide: 0.08em;
+
+  /* ── Spacing (4px grid) ──────────────────────────────────── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-24: 6rem;
+  --content-width: 72rem;
+  --prose-width: 46rem;
+
+  /* ── Radii ───────────────────────────────────────────────── */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* ── Motion ──────────────────────────────────────────────── */
+  --duration-instant: 80ms;
+  --duration-fast: 160ms;
+  --duration-base: 240ms;
+  --duration-slow: 420ms;
+  --duration-scene: 1200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1.2);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ── Breakpoints (documentation; Tailwind uses the same values) ── */
+  --bp-sm: 40rem;
+  --bp-md: 48rem;
+  --bp-lg: 64rem;
+  --bp-xl: 80rem;
+
+  /* ── Light theme ("blueprint") semantic tokens ───────────── */
+  color-scheme: light;
+  --color-bg: #f5f7fb;
+  --color-bg-elevated: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef2f8;
+  --color-surface-3: #e2e8f2;
+  --color-border: #d3dbe8;
+  --color-border-strong: #a9b6cb;
+  --color-text: #0b1220;
+  --color-text-muted: #45526b;
+  --color-text-subtle: #5d6a82;
+  --color-accent: var(--cyan-700);
+  --color-accent-strong: #155e75;
+  --color-accent-contrast: #ffffff;
+  --color-secondary: var(--blue-700);
+  --color-tertiary: var(--violet-700);
+  --color-highlight: var(--amber-700);
+  --color-info: var(--blue-700);
+  --color-success: var(--green-700);
+  --color-warning: var(--amber-700);
+  --color-danger: var(--red-700);
+  --color-grid: rgb(14 116 144 / 0.08);
+  --color-glow: rgb(14 116 144 / 0.18);
+  --color-focus: #1d4ed8;
+
+  --shadow-sm: 0 1px 2px rgb(11 18 32 / 0.06), 0 1px 1px rgb(11 18 32 / 0.04);
+  --shadow-md: 0 4px 16px -4px rgb(11 18 32 / 0.12), 0 2px 4px rgb(11 18 32 / 0.05);
+  --shadow-lg: 0 24px 48px -16px rgb(11 18 32 / 0.22);
+  --shadow-glow: 0 0 0 1px rgb(14 116 144 / 0.25), 0 8px 32px -8px rgb(14 116 144 / 0.35);
+
+  --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-focus);
+}
+
+/* Dark theme ("night city") — primary identity. Applied by preference without JS… */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --color-bg: var(--navy-900);
+    --color-bg-elevated: var(--navy-850);
+    --color-surface: #0c1323;
+    --color-surface-2: #121b2e;
+    --color-surface-3: #1a2540;
+    --color-border: #1f2b44;
+    --color-border-strong: #33415f;
+    --color-text: #e7ecf5;
+    --color-text-muted: #a3b0c6;
+    --color-text-subtle: #8593ab;
+    --color-accent: var(--cyan-400);
+    --color-accent-strong: var(--cyan-300);
+    --color-accent-contrast: #04111a;
+    --color-secondary: var(--blue-400);
+    --color-tertiary: var(--violet-400);
+    --color-highlight: var(--amber-400);
+    --color-info: var(--blue-400);
+    --color-success: var(--green-400);
+    --color-warning: var(--amber-400);
+    --color-danger: var(--red-400);
+    --color-grid: rgb(34 211 238 / 0.06);
+    --color-glow: rgb(34 211 238 / 0.22);
+    --color-focus: var(--cyan-300);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 6px 20px -6px rgb(0 0 0 / 0.6);
+    --shadow-lg: 0 30px 60px -20px rgb(0 0 0 / 0.75);
+    --shadow-glow: 0 0 0 1px rgb(34 211 238 / 0.25), 0 10px 40px -10px rgb(34 211 238 / 0.35);
+  }
+}
+
+/* …and explicitly when the visitor (or the inline script) chooses it. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: var(--navy-900);
+  --color-bg-elevated: var(--navy-850);
+  --color-surface: #0c1323;
+  --color-surface-2: #121b2e;
+  --color-surface-3: #1a2540;
+  --color-border: #1f2b44;
+  --color-border-strong: #33415f;
+  --color-text: #e7ecf5;
+  --color-text-muted: #a3b0c6;
+  --color-text-subtle: #8593ab;
+  --color-accent: var(--cyan-400);
+  --color-accent-strong: var(--cyan-300);
+  --color-accent-contrast: #04111a;
+  --color-secondary: var(--blue-400);
+  --color-tertiary: var(--violet-400);
+  --color-highlight: var(--amber-400);
+  --color-info: var(--blue-400);
+  --color-success: var(--green-400);
+  --color-warning: var(--amber-400);
+  --color-danger: var(--red-400);
+  --color-grid: rgb(34 211 238 / 0.06);
+  --color-glow: rgb(34 211 238 / 0.22);
+  --color-focus: var(--cyan-300);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 6px 20px -6px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 30px 60px -20px rgb(0 0 0 / 0.75);
+  --shadow-glow: 0 0 0 1px rgb(34 211 238 / 0.25), 0 10px 40px -10px rgb(34 211 238 / 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+    --duration-scene: 0ms;
+  }
+}

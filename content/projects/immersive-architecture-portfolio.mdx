@@ -1,0 +1,78 @@
+---
+title: Ram's Digital Metropolis — this portfolio
+summary: A statically exported Next.js site that pairs a lazy-loaded, procedurally generated 3D city with architecture case studies, decision records, diagrams-as-code and a validated MDX publishing pipeline.
+category: web
+technologies: [Next.js, React, TypeScript, Three.js, React Three Fiber, React Flow, Velite, MDX, D2, Mermaid, Pagefind, Playwright, GitHub Actions]
+provenance: production-derived
+status: active
+date: 2026-10-27
+featured: true
+links:
+  source: https://github.com/Ramachandrajoshi/Portfolio
+---
+
+## Problem
+
+A conventional portfolio lists technologies. It does not show *how* someone reasons about systems —
+the constraints they start from, the alternatives they reject, or how they validate a design. I
+wanted a site that demonstrates architecture thinking directly, while still being fast, accessible and
+useful to someone who just wants a résumé.
+
+## Context and constraints
+
+- **Static hosting only** (GitHub Pages): no server, no API routes, no image optimiser.
+- **Performance budgets as requirements**: ≤ 150 KB gzip initial JavaScript per route, ≤ 300 KB for the
+  3D experience, enforced in CI.
+- **Accessibility**: WCAG 2.2 AA, and nothing essential may depend on WebGL.
+- **Content integrity**: no invented facts, metrics or testimonials — provenance is part of the data model.
+
+## Approach
+
+1. **Static-first rendering.** Every page is pre-rendered HTML. Interactivity is added as small,
+   isolated islands; heavy libraries load only on demand.
+2. **Content as validated data.** Articles, case studies, ADRs, system models and projects are files
+   validated with Zod at build time, including referential integrity between them.
+3. **Diagrams as code.** C4 views and sequence diagrams are D2 and Mermaid sources compiled to SVG
+   during the build.
+4. **The 3D city as a gateway, not a gate.** It is lazy-loaded, optional, and mirrors the conventional
+   navigation.
+
+## Architecture
+
+The full design — rendering strategy, component boundaries, content pipeline, 3D loading strategy,
+deployment and the decision records — is documented in
+[ARCHITECTURE.md](https://github.com/Ramachandrajoshi/Portfolio/blob/main/ARCHITECTURE.md).
+
+<Callout type="important" title="Key decisions">
+  Static export to GitHub Pages; the 3D hero isolated from content pages; Velite as the single MDX
+  pipeline; diagram sources under version control; an external form service for contact; and explicit
+  fallbacks for reduced motion and WebGL failure.
+</Callout>
+
+## Important decisions
+
+<Tradeoffs
+  title="Rendering the architecture diagrams"
+  criteria="Works on static hosting, no runtime cost, accessible, reproducible from source."
+  options={[
+    { name: "Client-side Mermaid/D2 rendering", benefits: ["Simple to author"], drawbacks: ["Hundreds of KB of renderer JavaScript", "Diagrams invisible without JS"], chooseWhen: "Diagrams edited live by readers." },
+    { name: "Build-time SVG generation", benefits: ["Zero runtime JavaScript", "Fails the build on invalid source", "Theme-specific variants"], drawbacks: ["Needs a headless browser for Mermaid in CI"], chooseWhen: "Diagrams are authored content, as here.", selected: true },
+    { name: "Hand-exported images", benefits: ["No tooling"], drawbacks: ["Drift from source", "Not reproducible"], chooseWhen: "Never, for living documentation." }
+  ]}
+/>
+
+## Challenges
+
+- **Bundle budget versus framework baseline.** The framework runtime alone uses most of the 150 KB
+  initial budget, so every interactive feature had to justify its bytes — for example the mobile menu
+  uses the native `<dialog>` element instead of a dialog library.
+- **Base paths.** Every link, asset, canonical URL and structured-data URL must work both under a
+  GitHub Pages project path and at a domain root; URL construction is centralised and tested under a
+  non-root base path.
+
+## Results and lessons
+
+Results are reported only where they are measured: bundle sizes and Lighthouse scores are produced by
+CI on every pull request rather than quoted here. The main lesson is that constraints — static hosting,
+budgets, accessibility — are what make an architecture *interesting*; they force each decision to be
+explicit.

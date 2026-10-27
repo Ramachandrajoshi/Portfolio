@@ -1,0 +1,23 @@
+sequenceDiagram
+  autonumber
+  participant API as Order API
+  participant DB as Orders DB
+  participant R as Outbox relay
+  participant B as Broker
+  participant C as Consumer
+  participant I as Consumer inbox
+  API->>DB: one transaction: insert order + insert outbox row
+  R->>DB: poll unpublished outbox rows
+  R->>B: publish(OrderPlaced, id=evt-42)
+  B-->>R: ack
+  R->>DB: mark evt-42 published
+  Note over R,B: A crash between publish and mark causes a re-publish: at-least-once
+  B->>C: deliver evt-42
+  C->>I: insert evt-42 (unique key)
+  alt first delivery
+    C->>C: apply side effect in the same transaction
+    C-->>B: ack
+  else duplicate
+    I-->>C: unique violation → already processed
+    C-->>B: ack (no side effect)
+  end

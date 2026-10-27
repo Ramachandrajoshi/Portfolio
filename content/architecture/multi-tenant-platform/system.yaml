@@ -1,0 +1,303 @@
+# Interactive system model for the multi-tenant platform case study.
+# Rendered by <ArchitectureDiagram system="multi-tenant-platform" />; validated by velite.config.ts
+# (schema + referential integrity). Positions are React Flow canvas coordinates.
+caseStudy: multi-tenant-platform
+title: Multi-tenant platform — container view
+description: >-
+  A shared, stateless application tier serving many tenants, each with its own PostgreSQL database on a
+  shared shard, coordinated by a highly available control-plane catalogue. Play a scenario to watch a
+  request, a schema-migration wave or a tenant onboarding move through the system.
+groups:
+  - { id: public, label: Public clients, trust: public }
+  - { id: dmz, label: Edge, trust: dmz }
+  - { id: app, label: Application tier, trust: internal }
+  - { id: control, label: Control plane, trust: restricted }
+  - { id: data, label: Tenant data plane, trust: restricted }
+nodes:
+  - id: spa
+    label: Web application
+    kind: client
+    group: public
+    position: { x: 0, y: 40 }
+    technology: SPA (TypeScript)
+    responsibility: Browser client used by tenant staff; obtains OIDC tokens and calls the platform API on the tenant's host name.
+    rationale: Keeps the client stateless with respect to tenancy — it never chooses a tenant identifier the server trusts.
+    interfaces: [HTTPS to API gateway, OIDC authorisation-code flow with PKCE]
+    failureModes:
+      - mode: Expired or revoked token
+        effect: API returns 401; user is re-authenticated.
+        mitigation: Silent token refresh; short-lived access tokens limit exposure.
+    security: [No tenant id in client-controlled storage is trusted server-side, PKCE, strict CSP]
+    adrs: [MT-ADR-002]
+  - id: partner
+    label: Partner integrations
+    kind: external
+    group: public
+    position: { x: 0, y: 200 }
+    technology: REST clients (OAuth2 client credentials)
+    responsibility: Customer and partner systems that call tenant-scoped APIs machine-to-machine.
+    rationale: Client-credential tokens are issued per tenant, so machine callers go through exactly the same resolution path as users.
+    interfaces: [HTTPS REST, Outbound webhooks]
+    failureModes:
+      - mode: Burst traffic from one integration
+        effect: Could starve other tenants of API capacity.
+        mitigation: Per-tenant and per-client rate limits at the gateway; 429 with Retry-After.
+    security: [Per-tenant client credentials, Scoped permissions, Webhook signatures]
+    adrs: [MT-ADR-002]
+  - id: idp
+    label: Identity provider
+    kind: external
+    group: public
+    position: { x: 270, y: -110 }
+    technology: OIDC provider
+    responsibility: Authenticates users and machine clients and issues tokens carrying the tenant claim (tid).
+    rationale: Delegating authentication keeps credentials out of the platform and makes the tenant claim a signed fact.
+    interfaces: [OIDC discovery, JWKS, Token endpoint]
+    failureModes:
+      - mode: IdP unavailable
+        effect: New sign-ins fail; existing tokens remain valid until expiry.
+        mitigation: Cache JWKS with refresh-ahead; tokens validated locally without calling the IdP.
+    security: [Signed tokens (asymmetric keys), Key rotation via JWKS]
+  - id: gateway
+    label: API gateway
+    kind: gateway
+    group: dmz
+    position: { x: 270, y: 120 }
+    technology: Managed API gateway + WAF
+    responsibility: Terminates TLS, applies WAF rules, enforces per-tenant rate limits and request-size limits, and forwards to the API.
+    rationale: Noisy-neighbour protection is cheapest at the edge, before a request consumes application or database capacity.
+    interfaces: [HTTPS from clients, HTTP to Platform API]
+    failureModes:
+      - mode: Rate-limit state store unavailable
+        effect: Limits cannot be enforced precisely.
+        mitigation: Fail open with conservative local limits per instance, and alert.
+    security: [TLS 1.2+, WAF managed rules, Strips client-supplied internal headers]
+  - id: api
+    label: Platform API
+    kind: service
+    group: app
+    position: { x: 560, y: 120 }
+    technology: .NET / ASP.NET Core
+    responsibility: Resolves the tenant once per request, builds an immutable TenantContext, enforces tenant bulkheads and runs the domain logic against the tenant's database.
+    rationale: A shared stateless tier removes per-customer deployment drift; tenancy becomes data in the catalogue rather than infrastructure per customer.
+    interfaces: [HTTP endpoints (REST), SQL via PgBouncer, Redis GET/SUBSCRIBE, Broker publish]
+    failureModes:
+      - mode: One tenant's database is slow or down
+        effect: Requests for that tenant time out and hold threads/connections.
+        mitigation: Per-tenant circuit breaker and concurrency limit (bulkhead); other tenants unaffected.
+      - mode: Tenant schema outside the supported version range
+        effect: Queries could fail or corrupt data.
+        mitigation: Tenant placed in maintenance state; 503 with Retry-After until the migration wave completes.
+    security: [Tenant from validated token claim only, Host ↔ claim cross-check, Fail-closed endpoint filter]
+    adrs: [MT-ADR-001, MT-ADR-002, MT-ADR-004]
+  - id: redis
+    label: Resolution cache
+    kind: cache
+    group: control
+    position: { x: 870, y: -60 }
+    technology: Redis (cache + pub/sub)
+    responsibility: Caches tenant records (status, shard, schema version, flags) and broadcasts invalidations when the catalogue changes.
+    rationale: Tenant records are read on every request and change rarely — ideal for caching with explicit invalidation plus a TTL safety net.
+    interfaces: [GET/SET with TTL, PUBLISH/SUBSCRIBE tenant-changed]
+    failureModes:
+      - mode: Redis unavailable
+        effect: Every request would fall through to the catalogue.
+        mitigation: In-process L1 cache per instance with stale-if-error; catalogue protected by a concurrency limit.
+    security: [Private network only, AUTH + TLS, No secrets cached — only references]
+  - id: catalog
+    label: Tenant catalogue
+    kind: database
+    group: control
+    position: { x: 870, y: 100 }
+    technology: PostgreSQL (HA, synchronous replica)
+    responsibility: Source of truth for tenant identity, lifecycle status, shard placement, schema version, feature flags and global configuration.
+    rationale: Keeping control-plane data separate from tenant data lets it be highly available and strictly access-controlled without touching tenant databases.
+    interfaces: [SQL (read-only role for API), SQL (read-write role for orchestrator/provisioning)]
+    failureModes:
+      - mode: Catalogue primary failure
+        effect: Tenants not in cache cannot be resolved; no tenant changes possible.
+        mitigation: Automatic failover to synchronous replica; caches serve last-known records (stale-if-error, bounded).
+    security: [Separate credentials per role, No tenant business data stored, Audit table for changes]
+    adrs: [MT-ADR-001]
+  - id: secrets
+    label: Secret store
+    kind: external
+    group: control
+    position: { x: 870, y: 260 }
+    technology: Vault / cloud KMS
+    responsibility: Holds per-tenant database credentials and encryption-key references; issues them to workloads via workload identity.
+    rationale: Per-tenant credentials mean a leaked credential exposes one tenant, and rotation can be done per tenant.
+    interfaces: [Secrets API (workload identity)]
+    failureModes:
+      - mode: Secret store unavailable
+        effect: New tenant connections cannot be established.
+        mitigation: Credentials cached in memory with lease-based refresh well before expiry.
+    security: [Workload identity — no static secrets in config, Short leases, Access audited]
+  - id: bouncer
+    label: Connection pooler
+    kind: gateway
+    group: data
+    position: { x: 870, y: 420 }
+    technology: PgBouncer (transaction mode)
+    responsibility: Multiplexes many short application transactions onto a bounded number of server connections per tenant database.
+    rationale: Connection count would otherwise grow with tenants × instances × pool size.
+    interfaces: [PostgreSQL wire protocol in and out]
+    failureModes:
+      - mode: Pool exhausted for a busy tenant
+        effect: Transactions queue in PgBouncer; latency rises for that tenant.
+        mitigation: Per-database limits, queue-wait alerting, move hot tenants to a less loaded shard.
+    security: [TLS to server, auth_query against per-tenant roles]
+    adrs: [MT-ADR-005]
+  - id: shard-a
+    label: Shard A
+    kind: database
+    group: data
+    position: { x: 1170, y: 340 }
+    technology: PostgreSQL cluster — tenant_001 … tenant_n
+    responsibility: Hosts a set of tenant databases with shared compute; each database is isolated by credentials and catalogue placement.
+    rationale: Sharding by tenant keeps per-cluster connection and storage budgets bounded and allows moving hot tenants.
+    interfaces: [SQL via PgBouncer]
+    failureModes:
+      - mode: Cluster failover
+        effect: Tenants on this shard see brief errors.
+        mitigation: Retries with jitter for idempotent operations; circuit breakers stop retry storms; other shards unaffected.
+    security: [Per-tenant roles, Encryption at rest, Per-tenant backups]
+    adrs: [MT-ADR-001]
+  - id: shard-b
+    label: Shard B
+    kind: database
+    group: data
+    position: { x: 1170, y: 500 }
+    technology: PostgreSQL cluster — tenant_n+1 …
+    responsibility: Second shard; also the target for relocating large or noisy tenants.
+    rationale: Horizontal growth by adding shards rather than growing one cluster indefinitely.
+    interfaces: [SQL via PgBouncer]
+    failureModes:
+      - mode: Storage pressure
+        effect: Writes for tenants on this shard fail.
+        mitigation: Capacity alerts at 70 %; relocate tenants via logical replication before the threshold.
+    security: [Per-tenant roles, Encryption at rest]
+  - id: broker
+    label: Message broker
+    kind: broker
+    group: app
+    position: { x: 560, y: 320 }
+    technology: RabbitMQ (quorum queues)
+    responsibility: Carries background jobs (exports, provisioning, notifications) with the tenant id in every message envelope.
+    rationale: Long-running work leaves the request path; per-tenant routing keys allow fair scheduling.
+    interfaces: [AMQP publish/consume]
+    failureModes:
+      - mode: Consumer backlog
+        effect: Jobs delayed.
+        mitigation: Per-tenant fairness and prefetch limits; dead-letter queues for poison messages.
+    security: [TLS, Per-service credentials, Envelope tenant id re-validated by consumers]
+  - id: workers
+    label: Background workers
+    kind: worker
+    group: app
+    position: { x: 560, y: 470 }
+    technology: .NET worker service
+    responsibility: Processes jobs, provisions new tenant databases and exports de-identified facts to analytics.
+    rationale: Same TenantContext and data-access rules as the API, re-established explicitly from the message envelope.
+    interfaces: [AMQP consume, SQL via PgBouncer, Catalogue SQL (provisioning role)]
+    failureModes:
+      - mode: Job fails midway
+        effect: Partial side effects.
+        mitigation: Idempotent handlers keyed by job id; retries with backoff; dead-letter after N attempts.
+    security: [Tenant context from envelope, verified against catalogue, Least-privilege provisioning role]
+    adrs: [MT-ADR-002, MT-ADR-004]
+  - id: migrator
+    label: Migration orchestrator
+    kind: worker
+    group: app
+    position: { x: 560, y: 620 }
+    technology: .NET worker
+    responsibility: Applies expand/contract migrations tenant by tenant in waves and records each tenant's schema version in the catalogue.
+    rationale: Decouples releases from migration progress and limits the blast radius of a faulty migration.
+    interfaces: [Catalogue SQL, Tenant SQL (migration role), Redis PUBLISH]
+    failureModes:
+      - mode: Migration fails for some tenants
+        effect: Those tenants stay on the previous version.
+        mitigation: Wave halts above a failure threshold; failed tenants listed for operator action; app supports N-1 schema.
+    security: [Separate migration role with DDL rights, Change audit in catalogue]
+    adrs: [MT-ADR-003]
+  - id: otel
+    label: Telemetry pipeline
+    kind: monitoring
+    group: app
+    position: { x: 870, y: 620 }
+    technology: OpenTelemetry collector → metrics, traces, logs backends
+    responsibility: Collects traces, metrics and logs with tenant attributes, applying sampling and cardinality controls.
+    rationale: Tenant-aware telemetry is what makes noisy-neighbour and isolation incidents diagnosable.
+    interfaces: [OTLP]
+    failureModes:
+      - mode: Collector overload
+        effect: Telemetry dropped.
+        mitigation: Tail sampling, memory limiter processor; application never blocks on telemetry export.
+    security: [PII scrubbing processor, Tenant id in traces/logs, tier label in metrics]
+  - id: warehouse
+    label: Analytics warehouse
+    kind: external
+    position: { x: 1170, y: 660 }
+    technology: Columnar warehouse (external)
+    responsibility: Receives de-identified, tenant-tagged facts for cross-tenant reporting.
+    rationale: Cross-tenant questions are answered from an export, never by querying across tenant databases.
+    interfaces: [Batch file/stream ingestion]
+    failureModes:
+      - mode: Export delayed
+        effect: Reports stale.
+        mitigation: Exports are incremental and replayable from a watermark.
+    security: [De-identification before export, Tenant-level opt-out honoured]
+edges:
+  - { id: e-spa-gw, source: spa, target: gateway, label: API call, protocol: HTTPS + bearer token, mode: sync }
+  - { id: e-partner-gw, source: partner, target: gateway, label: API call, protocol: HTTPS + client credentials, mode: sync }
+  - { id: e-spa-idp, source: spa, target: idp, label: Sign in, protocol: OIDC + PKCE, mode: sync }
+  - { id: e-gw-api, source: gateway, target: api, label: Forward request, protocol: HTTP (host + token), mode: sync }
+  - { id: e-api-redis, source: api, target: redis, label: Get tenant record, protocol: Redis GET, mode: sync }
+  - { id: e-api-catalog, source: api, target: catalog, label: Resolve on miss, protocol: SQL (read-only), mode: sync }
+  - { id: e-api-secrets, source: api, target: secrets, label: Tenant credentials, protocol: Secrets API, mode: sync }
+  - { id: e-api-bouncer, source: api, target: bouncer, label: Tenant query, protocol: PostgreSQL, mode: sync }
+  - { id: e-bouncer-a, source: bouncer, target: shard-a, label: Pooled transaction, protocol: PostgreSQL, mode: sync }
+  - { id: e-bouncer-b, source: bouncer, target: shard-b, label: Pooled transaction, protocol: PostgreSQL, mode: sync }
+  - { id: e-api-broker, source: api, target: broker, label: Publish job, protocol: AMQP, mode: async }
+  - { id: e-broker-workers, source: broker, target: workers, label: Deliver job, protocol: AMQP, mode: async }
+  - { id: e-workers-bouncer, source: workers, target: bouncer, label: Tenant writes, protocol: PostgreSQL, mode: sync }
+  - { id: e-workers-catalog, source: workers, target: catalog, label: Register / activate tenant, protocol: SQL, mode: sync }
+  - { id: e-migrator-catalog, source: migrator, target: catalog, label: Wave plan + versions, protocol: SQL, mode: sync }
+  - { id: e-migrator-bouncer, source: migrator, target: bouncer, label: Apply migration, protocol: PostgreSQL (DDL), mode: sync }
+  - { id: e-migrator-redis, source: migrator, target: redis, label: Publish tenant-changed, protocol: Redis PUBLISH, mode: async }
+  - { id: e-redis-api, source: redis, target: api, label: Invalidate cache, protocol: Redis SUBSCRIBE, mode: async }
+  - { id: e-api-otel, source: api, target: otel, label: Telemetry, protocol: OTLP, mode: stream }
+  - { id: e-workers-warehouse, source: workers, target: warehouse, label: De-identified export, protocol: Batch, mode: batch }
+flows:
+  - id: tenant-request
+    title: A tenant request
+    description: How a request is bound to exactly one tenant before any data is touched.
+    steps:
+      - { edge: e-spa-gw, note: The browser calls acme.example.com with a token whose tid claim names the tenant. }
+      - { edge: e-gw-api, note: The gateway applies the tenant's rate limit and forwards the request. }
+      - { edge: e-api-redis, note: Middleware validates the token and looks up the tenant record in the cache. }
+      - { edge: e-api-catalog, note: On a cache miss the catalogue is queried; host and claim must map to the same tenant. }
+      - { edge: e-api-secrets, note: Credentials for the tenant's database role are fetched (normally served from an in-memory lease). }
+      - { edge: e-api-bouncer, note: The TenantDbContextFactory opens a connection to the tenant's database through PgBouncer. }
+      - { edge: e-bouncer-a, note: PgBouncer runs the transaction on a pooled server connection on Shard A. }
+  - id: migration-wave
+    title: A schema-migration wave
+    description: Expand migrations roll out tenant by tenant while the application keeps serving N-1 and N schemas.
+    steps:
+      - { edge: e-migrator-catalog, note: The orchestrator reads the next wave (canary tenants first) from the catalogue. }
+      - { edge: e-migrator-bouncer, note: It applies the expand migration to one tenant database at a time. }
+      - { edge: e-bouncer-b, note: The DDL runs on the tenant's shard; failures are recorded, not retried blindly. }
+      - { edge: e-migrator-catalog, note: The tenant's schema version is updated; the wave halts if failures exceed the threshold. }
+      - { edge: e-migrator-redis, note: A tenant-changed event is published. }
+      - { edge: e-redis-api, note: API instances drop the cached record and pick up the new schema version on the next request. }
+  - id: onboarding
+    title: Onboarding a tenant
+    description: Provisioning is asynchronous and idempotent, so a retry can never create two databases.
+    steps:
+      - { edge: e-gw-api, note: An operator requests a new tenant through the admin API. }
+      - { edge: e-api-broker, note: The API validates the request and publishes a provision-tenant job keyed by tenant id. }
+      - { edge: e-broker-workers, note: A worker picks up the job. }
+      - { edge: e-workers-catalog, note: It reserves the tenant record in "provisioning" status and selects a shard by capacity and residency. }
+      - { edge: e-workers-bouncer, note: It creates the database and role, then applies the current schema baseline. }
+      - { edge: e-workers-catalog, note: The tenant is marked active; only now will the resolver accept its requests. }

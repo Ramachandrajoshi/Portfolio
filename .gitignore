@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# next / build output
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# generated at build time (reproducible — never edit by hand)
+.velite/
+public/generated/
+
+# testing
+test-results/
+playwright-report/
+.lighthouseci/
+coverage/
+
+# env
+.env*
+!.env.example
+
+# misc
+.DS_Store
+*.log

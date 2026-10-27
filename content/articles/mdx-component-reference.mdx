@@ -1,0 +1,173 @@
+---
+title: The Component Library Behind These Articles
+description: A working reference for every MDX component on this site — ADRs, trade-off tables, diagrams as code, interactive system explorers, runnable sandboxes, tabs, timelines and callouts.
+date: 2026-10-01
+tags: [writing, diagrams-as-code, documentation]
+provenance: illustrative
+---
+
+<Callout type="info" title="Why this page exists">
+  This article is both documentation and a regression test: it uses **every** custom MDX component, so
+  if any of them breaks, the build — or the browser smoke tests that visit this page — fail.
+</Callout>
+
+Architecture writing fails when the reader cannot tell a decision from a description, or a measured
+number from a hopeful one. The components below exist to make those distinctions structural instead of
+stylistic.
+
+## Callout
+
+Four semantic variants. Each carries a text label, so meaning never depends on colour.
+
+<Callout type="info">Context the reader should know before continuing.</Callout>
+
+<Callout type="warning">A pitfall that will cost time or data if ignored.</Callout>
+
+<Callout type="important">The point of the section, if the reader remembers only one thing.</Callout>
+
+<Callout type="assumption">
+  A number used to reason about a design — e.g. *"assume 400 tenants with 25 % active at peak"* — that
+  is **not** a measurement.
+</Callout>
+
+```mdx
+<Callout type="assumption" title="Design assumptions">…</Callout>
+```
+
+## ADR
+
+An Architecture Decision Record card. In case studies, `<ADR id="MT-ADR-001" />` renders a recorded
+decision from YAML; in articles every field can be passed inline:
+
+<ADR
+  id="EX-ADR-001"
+  title="Use the transactional outbox for domain events"
+  status="accepted"
+  date="2026-10-01"
+  context="Services must publish events when their state changes. Writing to the database and publishing to the broker are two separate operations that can fail independently."
+  decision="Write the event to an outbox table in the same transaction as the state change; a relay publishes outbox rows to the broker and marks them sent."
+  alternatives={[
+    { option: "Publish after commit", summary: "Commit, then publish from application code.", rejectedBecause: "A crash between the two loses the event permanently." },
+    { option: "Distributed transaction (2PC)", summary: "Coordinate the database and broker with XA.", rejectedBecause: "Poor support in modern brokers, couples availability of both systems." }
+  ]}
+  consequences={{
+    positive: ["No lost events: state and event commit atomically", "The broker can be unavailable without blocking writes"],
+    negative: ["Delivery becomes at-least-once — consumers must be idempotent", "An extra table and relay process to operate"]
+  }}
+  risks={["Outbox table growth if the relay stalls"]}
+  followUps={["Alert on outbox age (oldest unpublished row)"]}
+/>
+
+## Tradeoffs
+
+An accessible comparison table — a real `<table>` with row and column headers. Optional `columns`
+relabels the headings (used for failure-mode tables in the case studies).
+
+<Tradeoffs
+  title="Where should de-duplication happen?"
+  criteria="Correctness under redelivery, operational cost, and how far the guarantee reaches."
+  options={[
+    { name: "Broker (exactly-once features)", benefits: ["No consumer code"], drawbacks: ["Guarantee usually ends at the broker boundary", "Vendor-specific"], chooseWhen: "Stream-to-stream processing entirely inside one platform." },
+    { name: "Consumer inbox table", benefits: ["Covers side effects in the consumer's own database", "Broker-agnostic"], drawbacks: ["Extra write per message", "Inbox retention to manage"], chooseWhen: "The side effect is a database write you control.", selected: true },
+    { name: "Idempotent downstream API", benefits: ["Protects the real side effect"], drawbacks: ["Requires the downstream to support idempotency keys"], chooseWhen: "The side effect is a call to another service (payments, email)." }
+  ]}
+/>
+
+## Diagrams as code: Mermaid and D2
+
+Both are compiled **at build time** into static light and dark SVGs; no renderer ships to the browser,
+and an invalid source fails the build with the parser's error. The source stays one click away.
+
+<Mermaid
+  src="articles/diagrams/outbox-sequence"
+  title="Transactional outbox and idempotent consumer"
+  description="The API writes the order and an outbox row in one transaction. A relay publishes outbox rows to the broker and marks them published; a crash between those steps causes a re-publish. The consumer records each event id in an inbox table with a unique key, so a duplicate delivery is acknowledged without repeating the side effect."
+/>
+
+<D2
+  src="articles/diagrams/iot-pipeline"
+  title="Industrial telemetry pipeline"
+  description="PLCs and sensors feed an edge gateway that normalises and buffers data, then publishes over MQTT 5 with QoS 1 to a cloud broker. An ingestion service validates and de-duplicates messages, writes batches to TimescaleDB and raw data to object storage, and forwards events to a stream processor that raises alarms."
+/>
+
+## ArchitectureDiagram
+
+The interactive system explorer (React Flow). It loads only when scrolled near, explains causality by
+animating scenarios, and is always paired with a server-rendered text catalogue.
+
+<ArchitectureDiagram system="multi-tenant-platform" />
+
+## Tabs
+
+Keyboard-accessible tabs (arrow keys, Home, End). All panels are in the HTML for search indexing.
+
+<Tabs labels={["C#", "TypeScript", "SQL"]} title="Idempotent consumer in three languages">
+  <TabPanel>
+
+```csharp
+// Inbox insert and side effect share one transaction: either both happen or neither.
+await using var tx = await db.Database.BeginTransactionAsync(ct);
+var inserted = await db.Database.ExecuteSqlAsync(
+    $"INSERT INTO inbox (message_id) VALUES ({msg.Id}) ON CONFLICT DO NOTHING", ct);
+if (inserted == 1) await ApplyAsync(msg, ct);
+await tx.CommitAsync(ct);
+```
+
+  </TabPanel>
+  <TabPanel>
+
+```ts
+await sql.begin(async (tx) => {
+  const rows = await tx`INSERT INTO inbox (message_id) VALUES (${msg.id}) ON CONFLICT DO NOTHING RETURNING 1`;
+  if (rows.length === 1) await apply(tx, msg);
+});
+```
+
+  </TabPanel>
+  <TabPanel>
+
+```sql
+CREATE TABLE inbox (
+  message_id   text PRIMARY KEY,
+  processed_at timestamptz NOT NULL DEFAULT now()
+);
+-- Retention: delete rows older than the broker's maximum redelivery window.
+```
+
+  </TabPanel>
+</Tabs>
+
+## Timeline
+
+For design evolution, milestones or processes. Status is spelled out, not colour-coded only.
+
+<Timeline
+  title="Evolution of a delivery guarantee"
+  items={[
+    { label: "v1", title: "Publish after commit", description: "Events lost on crash between commit and publish.", status: "done" },
+    { label: "v2", title: "Transactional outbox", description: "No lost events; duplicates possible.", status: "done" },
+    { label: "v3", title: "Inbox de-duplication in consumers", description: "Effectively-once side effects.", status: "current" },
+    { label: "v4", title: "Replay tooling from the event archive", status: "planned" }
+  ]}
+/>
+
+## Sandpack
+
+Runnable examples. The code is rendered statically at build time; the sandbox (and its dependencies)
+download only when you press **Run**, and execute in CodeSandbox's cross-origin iframe.
+
+<Sandpack
+  title="Duplicate delivery, with and without an inbox"
+  description="Simulates at-least-once delivery and shows why consumers need de-duplication."
+  template="vanilla-ts"
+  example="duplicate-delivery"
+/>
+
+## Writing guidelines
+
+1. **Label provenance** in frontmatter: `illustrative`, `sanitized`, `experimental` or
+   `production-derived`.
+2. **Never present an assumption as a result.** Use `<Callout type="assumption">` for inputs and show
+   the arithmetic.
+3. **Pair every visual with text.** Diagrams require a `description`; explorers ship a catalogue.
+4. **Record decisions as ADRs**, including what was given up.

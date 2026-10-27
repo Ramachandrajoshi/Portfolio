@@ -1,0 +1,35 @@
+id: MT-ADR-005
+title: PgBouncer transaction pooling and bounded per-tenant pools
+status: proposed
+date: 2026-09-15
+caseStudy: multi-tenant-platform
+context: >-
+  Client-side connection pools are keyed by connection string, so every tenant database gets its own
+  pool in every application instance. The number of potential connections therefore grows with
+  tenants × instances × pool size, while each PostgreSQL connection is a server process with memory
+  cost, and max_connections is in the hundreds, not thousands.
+decision: >-
+  Route tenant traffic through PgBouncer in transaction-pooling mode per shard, cap the client pool per
+  tenant in the application (small Maximum Pool Size, short idle lifetime), cap server connections per
+  database in PgBouncer, and place tenants on shards so that the sum of active-tenant demand fits the
+  shard's connection budget. Session-level features (prepared statements across transactions, advisory
+  session locks, LISTEN/NOTIFY) are not used on tenant connections.
+alternatives:
+  - option: Direct connections with large client pools
+    summary: Let each instance hold generous pools to every tenant database.
+    rejectedBecause: Connection count explodes with tenant count and instance count; idle pools waste memory.
+  - option: Session pooling
+    summary: PgBouncer in session mode.
+    rejectedBecause: Does not reduce server connections for long-lived application sessions.
+consequences:
+  positive:
+    - Server connections are bounded per shard regardless of how many app instances run.
+    - Idle tenants cost (almost) nothing in connections.
+  negative:
+    - Transaction pooling forbids session state; some libraries' defaults must be changed.
+    - PgBouncer is an extra hop and must itself be highly available.
+risks:
+  - Bursty tenants can exhaust their per-database server pool and queue in PgBouncer; queue wait time
+    must be monitored and alerted per shard.
+followUps:
+  - Validate pool settings with a skewed (Zipf-distributed) multi-tenant load test before acceptance.
