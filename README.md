@@ -303,7 +303,7 @@ Automated checks (axe, Lighthouse) catch a subset of issues. Before a release, v
 
 ## Licensing and assets
 
-- Source code and written content © Ramachandra Joshi. All rights reserved unless a license file is added.
+- Source code and written content © Ramachandra Joshi, released under the [MIT License](LICENSE).
 - Fonts: Inter, Space Grotesk and JetBrains Mono (SIL Open Font License 1.1), self-hosted via
   `@fontsource`.
 - The 3D city, character, poster and social images are generated procedurally by this repository; no
