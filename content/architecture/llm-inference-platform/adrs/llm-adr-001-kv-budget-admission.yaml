@@ -1,0 +1,33 @@
+id: LLM-ADR-001
+title: Admit requests by KV-cache token budget, not by request count
+status: accepted
+date: 2026-10-02
+caseStudy: llm-inference-platform
+context: >-
+  On a fixed GPU, memory left after loading weights holds the KV cache, and the KV cache bounds how many
+  tokens can be in flight. Request counts are a poor proxy: one 32k-token request can use as much KV
+  memory as sixteen 2k-token requests. When the cache is oversubscribed the engine must preempt and
+  recompute, which collapses throughput and latency together.
+decision: >-
+  The scheduler estimates each request's KV demand (prompt tokens plus max_tokens, capped by policy) and
+  admits it only if the target server's free KV budget covers it, with headroom for in-flight growth.
+  Requests are queued per priority class (interactive before batch) and rejected with 429 and
+  Retry-After when the queue wait would exceed the class's latency objective.
+alternatives:
+  - option: Fixed concurrency limit per server
+    summary: Allow N concurrent requests regardless of length.
+    rejectedBecause: Either wastes capacity on short requests or overcommits on long ones.
+  - option: Let the engine preempt freely
+    summary: Admit everything; rely on the engine's swapping/recomputation.
+    rejectedBecause: Preemption storms degrade every request instead of delaying a few.
+consequences:
+  positive:
+    - Predictable latency for admitted requests; overload becomes explicit queueing or 429s.
+    - Capacity planning in the unit that actually runs out — tokens of KV cache.
+  negative:
+    - Requires token estimation at the gateway (tokeniser per model).
+    - max_tokens defaults matter — generous defaults reserve memory that is never used.
+risks:
+  - Underestimating demand (e.g. tool loops that grow context) leads to preemption; monitored via engine preemption counters.
+followUps:
+  - Tune per-class max_tokens defaults from observed completion-length distributions.

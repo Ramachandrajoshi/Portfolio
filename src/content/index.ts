@@ -20,7 +20,9 @@ export function getArticle(slug: string): Article | undefined {
 export function allTags(): { tag: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const a of allArticles) for (const t of a.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
-  return [...counts].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  return [...counts]
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
 
 /** Related = same series first, then by shared-tag count, then recency. */
@@ -30,7 +32,8 @@ export function relatedArticles(article: Article, limit = 3): Article[] {
     .map((a) => ({
       a,
       score:
-        (article.series && a.series === article.series ? 10 : 0) + a.tags.filter((t) => article.tags.includes(t)).length,
+        (article.series && a.series === article.series ? 10 : 0) +
+        a.tags.filter((t) => article.tags.includes(t)).length,
     }))
     .filter((x) => x.score > 0)
     .sort((x, y) => y.score - x.score || byDateDesc(x.a, y.a))
@@ -62,8 +65,7 @@ export function systemFor(caseStudy: string): SystemModel | undefined {
   return systems.find((s) => s.caseStudy === caseStudy);
 }
 
-const showPlaceholders =
-  process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_SHOW_PLACEHOLDERS === 'true';
+const showPlaceholders = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_SHOW_PLACEHOLDERS === 'true';
 
 /** Placeholder projects (templates awaiting the owner's facts) never ship to production. */
 export const allProjects: Project[] = projects

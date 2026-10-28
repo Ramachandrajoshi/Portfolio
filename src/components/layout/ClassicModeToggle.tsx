@@ -2,7 +2,7 @@
 
 import { setClassicMode, useClassicMode } from '@/lib/preferences';
 import { CubeIcon, ListIcon } from '@/components/ui/icons';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 
 /**
  * "Classic portfolio" switch. When pressed, the 3D city is never initialised; the home
@@ -15,7 +15,7 @@ export function ClassicModeToggle({ className, showLabel = false }: { className?
       type="button"
       aria-pressed={classic}
       onClick={() => setClassicMode(!classic)}
-      className={cn(
+      className={cx(
         'inline-flex h-10 items-center gap-2 rounded-md px-2.5 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg aria-pressed:text-accent',
         className,
       )}

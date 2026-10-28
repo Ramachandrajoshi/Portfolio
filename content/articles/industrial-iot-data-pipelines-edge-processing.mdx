@@ -1,0 +1,128 @@
+---
+title: Industrial IoT Data Pipelines and Edge Processing
+description: Designing telemetry pipelines for equipment that goes offline — store-and-forward gateways, MQTT delivery, message identity, late data and tiered time-series storage.
+date: 2026-10-24
+tags: [iot, mqtt, edge-computing, timescaledb, time-series]
+series: Architecture fundamentals
+seriesOrder: 4
+provenance: illustrative
+---
+
+Industrial telemetry looks like a simple stream — sensors produce numbers, a database stores them —
+until the first network outage. Then the questions that matter appear: what happened to the data
+while the site was offline, what happens when it all arrives at once, and how do you avoid storing it
+twice? This article walks through a pipeline designed around those questions.
+
+<D2
+  src="articles/diagrams/iot-pipeline"
+  title="Industrial telemetry pipeline"
+  description="PLCs and sensors feed an edge gateway that normalises and buffers data, then publishes over MQTT 5 with QoS 1 to a cloud broker. An ingestion service validates and de-duplicates messages, writes batches to TimescaleDB and raw data to object storage, and forwards events to a stream processor that raises alarms."
+/>
+
+## The edge owns three responsibilities
+
+1. **Adaptation.** Plants speak OPC UA, Modbus and vendor protocols; the gateway normalises units,
+   names and timestamps so the cloud sees one format.
+2. **Buffering.** Every reading is written to a bounded local queue *before* it is sent. When the
+   uplink drops, the queue grows; when it returns, the gateway replays.
+3. **Identity.** Each message gets a deterministic identity — device, tag, source time and sequence
+   number — so duplicates can be recognised anywhere downstream.
+
+<Callout type="important" title="Identity is born at the edge">
+  De-duplication is only possible if the producer stamps a stable identity before the first network
+  hop. Everything downstream depends on this one decision.
+</Callout>
+
+## MQTT quality of service, in practice
+
+<Tabs labels={["QoS 0", "QoS 1", "QoS 2"]} title="MQTT QoS levels">
+<TabPanel>
+
+**At most once.** Fire and forget. Cheapest, but every outage loses data. Fine for live-only values
+nobody will look at later.
+
+</TabPanel>
+<TabPanel>
+
+**At least once.** The broker acknowledges each message; unacknowledged messages are resent, so
+duplicates happen after lost acknowledgements. Combined with message identity and an edge buffer,
+this is the usual choice for telemetry.
+
+</TabPanel>
+<TabPanel>
+
+**Exactly once — between client and broker.** A four-step handshake per message. It doubles round
+trips on weak links and the guarantee ends at the broker; you still need de-duplication downstream.
+
+</TabPanel>
+</Tabs>
+
+Bind authorisation to identity, not payloads: each device has its own certificate, and topic ACLs
+(`t/{tenant}/s/{site}/d/{device}/…`) allow it to publish only under its own path.
+
+## Recovery is a workload
+
+<Callout type="assumption">
+  Example: a site with 2,000 tags at 1 Hz is offline for 8 hours. These numbers illustrate the method.
+</Callout>
+
+That site returns with 2,000 × 28,800 ≈ **57.6 million** readings. Replaying them as fast as possible
+would delay every live reading behind the backlog, so the gateway replays at an agreed rate (say 5×
+its live rate, ≈ 96 minutes to drain) and interleaves live data first. Freshness during recovery
+becomes a design parameter, not an accident.
+
+<Timeline
+  title="A site outage, from the pipeline's point of view"
+  items={[
+    { label: "T+0", title: "Uplink drops", description: "Gateway keeps polling; readings accumulate in the disk queue.", status: "done" },
+    { label: "T+8h", title: "Uplink returns", description: "Live data resumes immediately; backlog replay starts at the agreed rate.", status: "done" },
+    { label: "T+8h–9.6h", title: "Replay", description: "Ingestion de-duplicates readings resent after lost acknowledgements; late data is tagged.", status: "current" },
+    { label: "Done", title: "Completeness check", description: "Expected vs received readings per hour per site; archive for the window finalised.", status: "planned" }
+  ]}
+/>
+
+## Storage: aggregate early, keep raw cheaply
+
+Dashboards should never scan raw telemetry. With TimescaleDB, readings go into a hypertable; older
+chunks are compressed; **continuous aggregates** maintain 1-minute and 1-hour roll-ups; retention
+policies drop raw data after a short window while aggregates live for years.
+
+```sql
+SELECT create_hypertable('readings', 'time', chunk_time_interval => INTERVAL '1 day');
+
+CREATE MATERIALIZED VIEW readings_1m
+WITH (timescaledb.continuous) AS
+SELECT time_bucket('1 minute', time) AS bucket, tenant_id, tag_id,
+       avg(value) AS avg, min(value) AS min, max(value) AS max, count(*) AS samples
+FROM readings
+GROUP BY bucket, tenant_id, tag_id;
+
+SELECT add_continuous_aggregate_policy('readings_1m',
+  start_offset => INTERVAL '3 hours', end_offset => INTERVAL '1 minute', schedule_interval => INTERVAL '1 minute');
+ALTER TABLE readings SET (timescaledb.compress, timescaledb.compress_segmentby = 'tenant_id, tag_id');
+SELECT add_compression_policy('readings', INTERVAL '7 days');
+SELECT add_retention_policy('readings', INTERVAL '30 days');
+```
+
+<Callout type="warning" title="Late data and compression">
+  Readings that arrive after their chunk is compressed are more expensive to insert. Route very late
+  data through a correction job, and make sure continuous aggregates refresh far enough back
+  (`start_offset`) to include it.
+</Callout>
+
+## Alarms need state
+
+Threshold-per-sample alarms on noisy signals flap. A stateful alarm engine applies **deadbands**,
+**minimum durations** and **hysteresis**, tracks the alarm lifecycle (active, acknowledged, shelved)
+and notifies only on transitions — idempotently, so a restart never re-pages anyone.
+
+## Operational signals
+
+- Gateway buffer depth and oldest unsent reading.
+- Ingestion lag, duplicate rate and rejected-message reasons.
+- Per-site completeness per hour.
+- Alarm rate per operator per hour; flapping alarms.
+- Aggregate refresh lag and compression ratio.
+
+The complete reference architecture, with ADRs and failure modes, is in the
+[industrial telemetry case study](/architecture/industrial-telemetry-platform/).

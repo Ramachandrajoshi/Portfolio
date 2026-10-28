@@ -1,0 +1,31 @@
+id: ED-ADR-004
+title: Tiered delayed retries, a dead-letter topic and an operator replay tool
+status: accepted
+date: 2026-10-10
+caseStudy: event-driven-processing
+context: >-
+  Failures are either transient (timeouts, rate limits, a dependency restarting) or permanent (invalid
+  data, a bug). Retrying in place blocks the partition behind the failing event; retrying immediately in a
+  tight loop amplifies outages.
+decision: >-
+  Classify errors. Transient failures move the event to delayed retry topics (1 minute, 10 minutes,
+  1 hour) with jitter, preserving its key and attempt count. Permanent failures, and transient ones that
+  exhaust the tiers, go to a dead-letter topic with the error and context. Operators inspect, fix and
+  re-publish dead-lettered events with a replay tool that preserves event ids, so idempotency still holds.
+alternatives:
+  - option: Retry in place with backoff
+    summary: Block the partition until the event succeeds.
+    rejectedBecause: One bad event halts processing for every other order on that partition.
+  - option: Drop after N attempts
+    summary: Log and discard.
+    rejectedBecause: Silent data loss for exactly the cases that need human attention.
+consequences:
+  positive:
+    - Partitions keep flowing; failures are isolated and visible.
+    - Replays are safe because event ids are preserved and consumers are idempotent.
+  negative:
+    - Retried events can overtake later events of the same aggregate; consumers use aggregate versions to park out-of-order events.
+risks:
+  - A systemic failure (dependency down for hours) floods the DLQ; circuit breakers pause consumption instead.
+followUps:
+  - DLQ age and size alerts; runbook for bulk replay after an incident.

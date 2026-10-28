@@ -1,0 +1,33 @@
+id: LLM-ADR-003
+title: One replica per GPU when the model fits; tensor parallelism only when it must
+status: accepted
+date: 2026-10-04
+caseStudy: llm-inference-platform
+context: >-
+  The node has two 24 GB GPUs connected over PCIe, not a high-bandwidth GPU interconnect. Tensor
+  parallelism splits every layer across GPUs and synchronises them with collective operations on every
+  layer of every decode step, so interconnect bandwidth and latency directly limit decode speed.
+decision: >-
+  When the quantised model plus a useful KV budget fits on one GPU, run an independent replica per GPU
+  and let the scheduler balance between them. Use tensor parallelism only for models that cannot fit on
+  one GPU, and measure the inter-token latency penalty before adopting it.
+alternatives:
+  - option: Tensor parallelism across both GPUs
+    summary: One engine spanning two GPUs.
+    rejectedBecause: >-
+      Pooled memory is attractive, but per-layer synchronisation over PCIe adds latency to every token,
+      and one fault takes down all capacity.
+  - option: Pipeline parallelism
+    summary: Different layers on different GPUs.
+    rejectedBecause: Adds pipeline bubbles at small batch sizes; helps throughput more than latency.
+consequences:
+  positive:
+    - No cross-GPU synchronisation on the hot path; failure isolation per GPU.
+    - Simple horizontal scaling — add GPUs, add replicas.
+  negative:
+    - KV capacity is not pooled; a single very long context must fit within one GPU's budget.
+    - Prefix-cache hits are per replica unless routing is cache-aware.
+risks:
+  - Larger future models may force tensor parallelism; the scheduler abstracts the topology so this is a deployment change.
+followUps:
+  - Prefix-aware routing so requests sharing a system prompt land on the same replica.

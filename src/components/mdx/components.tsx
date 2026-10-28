@@ -15,7 +15,12 @@ import { Timeline } from './Timeline';
 import { isExternal } from '@/lib/urls';
 
 function Anchor({ href = '', children, ...props }: ComponentProps<'a'>) {
-  if (href.startsWith('/')) return <Link href={href} {...props}>{children}</Link>;
+  if (href.startsWith('/'))
+    return (
+      <Link href={href} {...props}>
+        {children}
+      </Link>
+    );
   if (isExternal(href))
     return (
       <a href={href} rel="noopener noreferrer" target="_blank" {...props}>
@@ -23,7 +28,11 @@ function Anchor({ href = '', children, ...props }: ComponentProps<'a'>) {
         <span className="sr-only"> (opens in a new tab)</span>
       </a>
     );
-  return <a href={href} {...props}>{children}</a>;
+  return (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  );
 }
 
 function Table(props: ComponentProps<'table'>) {

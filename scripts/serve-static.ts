@@ -3,12 +3,15 @@
  *  - the export is mounted under the deployment base path (from NEXT_PUBLIC_SITE_URL),
  *  - "/dir/" serves "/dir/index.html", "/dir" redirects to "/dir/",
  *  - unknown paths return out/404.html with status 404,
- *  - nothing is served outside the base path (catches links that forgot it).
+ *  - nothing is served outside the base path (catches links that forgot it),
+ *  - text responses are gzip-compressed, as GitHub Pages does (so Lighthouse measures real
+ *    transfer sizes).
  *
  * Usage: NEXT_PUBLIC_SITE_URL=http://localhost:4173/portfolio tsx scripts/serve-static.ts [port]
  */
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createGzip } from 'node:zlib';
 import { extname, join, normalize } from 'node:path';
 import { deployment, OUT_DIR } from './lib/export';
 
@@ -36,21 +39,29 @@ const types: Record<string, string> = {
   '.ico': 'image/x-icon',
 };
 
-function send(res: import('node:http').ServerResponse, file: string, status = 200) {
+const compressible = /^(text\/|application\/(json|javascript|xml)|image\/svg\+xml)/;
+
+function send(req: IncomingMessage, res: ServerResponse, file: string, status = 200) {
+  const type = types[extname(file)] ?? 'application/octet-stream';
+  const gzip = compressible.test(type) && /\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''));
   res.writeHead(status, {
-    'content-type': types[extname(file)] ?? 'application/octet-stream',
+    'content-type': type,
     'cache-control': file.includes('/_next/static/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+    vary: 'Accept-Encoding',
+    ...(gzip ? { 'content-encoding': 'gzip' } : {}),
   });
-  createReadStream(file).pipe(res);
+  const stream = createReadStream(file);
+  if (gzip) stream.pipe(createGzip({ level: 6 })).pipe(res);
+  else stream.pipe(res);
 }
 
 createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   let path = decodeURIComponent(url.pathname);
-  const notFound = () => send(res, join(OUT_DIR, '404.html'), 404);
+  const notFound = () => send(req, res, join(OUT_DIR, '404.html'), 404);
 
   if (basePath) {
-    if (path === '/' ) {
+    if (path === '/') {
       res.writeHead(302, { location: `${basePath}/` });
       return res.end();
     }
@@ -66,10 +77,10 @@ createServer((req, res) => {
       return res.end();
     }
     const index = join(file, 'index.html');
-    return existsSync(index) ? send(res, index) : notFound();
+    return existsSync(index) ? send(req, res, index) : notFound();
   }
-  if (existsSync(file)) return send(res, file);
-  if (existsSync(`${file}.html`)) return send(res, `${file}.html`);
+  if (existsSync(file)) return send(req, res, file);
+  if (existsSync(`${file}.html`)) return send(req, res, `${file}.html`);
   return notFound();
 }).listen(port, () => {
   console.log(`Serving ./out at http://localhost:${port}${basePath}/`);

@@ -17,8 +17,14 @@ export const timelineEntrySchema = z.object({
   organisation: z.string().min(1),
   organisationUrl: url.optional(),
   /** ISO year-month, e.g. "2021-04". null = not yet supplied by the owner. */
-  start: z.string().regex(/^\d{4}(-\d{2})?$/).nullable(),
-  end: z.string().regex(/^\d{4}(-\d{2})?$/).nullable(),
+  start: z
+    .string()
+    .regex(/^\d{4}(-\d{2})?$/)
+    .nullable(),
+  end: z
+    .string()
+    .regex(/^\d{4}(-\d{2})?$/)
+    .nullable(),
   current: z.boolean(),
   summary: z.string().nullable(),
   highlights: z.array(z.string()),

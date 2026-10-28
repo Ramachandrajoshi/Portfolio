@@ -11,7 +11,9 @@ export function TagList({ tags, active }: { tags: { tag: string; count: number }
             aria-current={active ? undefined : 'page'}
             className={cn(
               'inline-flex rounded-full border px-3 py-1 text-sm',
-              active ? 'border-border text-muted hover:border-accent hover:text-accent' : 'border-accent bg-accent/10 text-accent',
+              active
+                ? 'border-border text-muted hover:border-accent hover:text-accent'
+                : 'border-accent bg-accent/10 text-accent',
             )}
           >
             All
@@ -24,7 +26,9 @@ export function TagList({ tags, active }: { tags: { tag: string; count: number }
               aria-current={active === tag ? 'page' : undefined}
               className={cn(
                 'inline-flex rounded-full border px-3 py-1 text-sm',
-                active === tag ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:border-accent hover:text-accent',
+                active === tag
+                  ? 'border-accent bg-accent/10 text-accent'
+                  : 'border-border text-muted hover:border-accent hover:text-accent',
               )}
             >
               #{tag} <span className="ml-1.5 text-subtle">{count}</span>

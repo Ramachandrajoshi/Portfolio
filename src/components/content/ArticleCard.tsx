@@ -18,7 +18,7 @@ export function ArticleCard({ article, headingLevel = 'h2' }: { article: Article
           </>
         ) : null}
       </div>
-      <H className="mt-3 font-display text-xl font-semibold leading-snug">
+      <H className="mt-3 font-display text-xl leading-snug font-semibold">
         <Link href={article.url} className="after:absolute after:inset-0 after:rounded-[inherit]">
           {article.title}
         </Link>

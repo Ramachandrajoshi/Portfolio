@@ -43,7 +43,9 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
   const related = relatedArticles(article);
   const { previous, next } = adjacentArticles(article);
   const seriesParts = article.series
-    ? allArticles.filter((a) => a.series === article.series).sort((a, b) => (a.seriesOrder ?? 0) - (b.seriesOrder ?? 0) || a.date.localeCompare(b.date))
+    ? allArticles
+        .filter((a) => a.series === article.series)
+        .sort((a, b) => (a.seriesOrder ?? 0) - (b.seriesOrder ?? 0) || a.date.localeCompare(b.date))
     : [];
 
   return (
@@ -72,7 +74,10 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
         <ul className="mt-4 flex flex-wrap gap-2" aria-label="Tags">
           {article.tags.map((t) => (
             <li key={t}>
-              <Link href={`/articles/tags/${t}/`} className="font-mono text-xs text-accent hover:underline">
+              <Link
+                href={`/articles/tags/${t}/`}
+                className="inline-flex min-h-6 items-center rounded px-1.5 font-mono text-xs text-accent hover:bg-accent/10 hover:underline"
+              >
                 #{t}
               </Link>
             </li>
@@ -83,18 +88,31 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
       <div className="container-page grid gap-10 py-12 lg:grid-cols-[minmax(0,1fr)_15rem]">
         <article id="article-body" data-pagefind-body data-pagefind-meta="type:Article" className="min-w-0">
           {article.cover ? (
-            <img src={asset(article.cover)} alt={article.coverAlt ?? ''} className="mb-10 w-full rounded-xl border border-border" width={1200} height={630} />
+            <img
+              src={asset(article.cover)}
+              alt={article.coverAlt ?? ''}
+              className="mb-10 w-full rounded-xl border border-border"
+              width={1200}
+              height={630}
+            />
           ) : null}
           {seriesParts.length > 1 ? (
-            <nav aria-label={`Series: ${article.series}`} className="not-prose mb-10 rounded-lg border border-tertiary/40 bg-tertiary/5 p-4 text-sm">
+            <nav
+              aria-label={`Series: ${article.series}`}
+              className="not-prose mb-10 rounded-lg border border-tertiary/40 bg-tertiary/5 p-4 text-sm"
+            >
               <p className="eyebrow !text-tertiary">Series · {article.series}</p>
               <ol className="mt-2 list-decimal space-y-1 pl-5">
                 {seriesParts.map((part) => (
                   <li key={part.slug}>
                     {part.slug === article.slug ? (
-                      <span aria-current="page" className="font-medium">{part.title}</span>
+                      <span aria-current="page" className="font-medium">
+                        {part.title}
+                      </span>
                     ) : (
-                      <Link href={part.url} className="link">{part.title}</Link>
+                      <Link href={part.url} className="link">
+                        {part.title}
+                      </Link>
                     )}
                   </li>
                 ))}
@@ -113,7 +131,9 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
                     <span className="text-xs text-muted">← Previous (older)</span>
                     <span className="mt-1 block font-medium">{previous.title}</span>
                   </Link>
-                ) : <span />}
+                ) : (
+                  <span />
+                )}
                 {next ? (
                   <Link href={next.url} rel="next" className="card card-interactive block p-4 text-right">
                     <span className="text-xs text-muted">Next (newer) →</span>
@@ -133,7 +153,9 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
 
       {related.length ? (
         <section className="container-page pb-4" aria-labelledby="related-heading" data-pagefind-ignore>
-          <h2 id="related-heading" className="font-display text-2xl font-semibold">Related articles</h2>
+          <h2 id="related-heading" className="font-display text-2xl font-semibold">
+            Related articles
+          </h2>
           <ul className="mt-6 grid gap-6 md:grid-cols-3">
             {related.map((a) => (
               <li key={a.slug}>

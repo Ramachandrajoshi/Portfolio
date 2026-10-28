@@ -31,7 +31,12 @@ export function ADR({ headingLevel = 'h3', compact = false, ...props }: ADRProps
     >
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-surface-2/70 px-5 py-3">
         <span className="font-mono text-xs text-accent">{record.id}</span>
-        <span className={cn('rounded-full border px-2 py-0.5 font-mono text-[0.68rem] uppercase tracking-wider', statusTone[record.status ?? 'proposed'])}>
+        <span
+          className={cn(
+            'rounded-full border px-2 py-0.5 font-mono text-[0.68rem] tracking-wider uppercase',
+            statusTone[record.status ?? 'proposed'],
+          )}
+        >
           Status: {record.status}
         </span>
         {record.date ? <span className="text-xs text-muted">{formatDate(record.date)}</span> : null}
@@ -68,7 +73,9 @@ export function ADR({ headingLevel = 'h3', compact = false, ...props }: ADRProps
         {!compact && (record.risks?.length || record.followUps?.length) ? (
           <div className="grid gap-4 sm:grid-cols-2">
             {record.risks?.length ? <List label="Risks" items={record.risks} marker="!" tone="text-warning" /> : null}
-            {record.followUps?.length ? <List label="Follow-up actions" items={record.followUps} marker="→" tone="text-accent" /> : null}
+            {record.followUps?.length ? (
+              <List label="Follow-up actions" items={record.followUps} marker="→" tone="text-accent" />
+            ) : null}
           </div>
         ) : null}
       </div>

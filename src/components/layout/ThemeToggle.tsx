@@ -2,7 +2,7 @@
 
 import { setTheme, useResolvedTheme } from '@/lib/preferences';
 import { MoonIcon, SunIcon } from '@/components/ui/icons';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 
 export function ThemeToggle({ className }: { className?: string }) {
   const theme = useResolvedTheme();
@@ -11,7 +11,7 @@ export function ThemeToggle({ className }: { className?: string }) {
     <button
       type="button"
       onClick={() => setTheme(next)}
-      className={cn(
+      className={cx(
         'inline-flex size-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-fg',
         className,
       )}

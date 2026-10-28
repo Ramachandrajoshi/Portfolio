@@ -1,0 +1,242 @@
+---
+title: Event-Driven Processing — Delivery, Retries and Idempotency
+summary: >-
+  A reference design for reliable asynchronous processing: transactional outbox, at-least-once delivery
+  with idempotent consumers, ordering per aggregate, tiered retries, dead-lettering and safe replay.
+domain: Distributed systems
+order: 4
+provenance: illustrative
+status: complete
+date: 2026-10-12
+tags: [event-driven, messaging, idempotency, reliability, distributed-systems]
+problem: >-
+  When an order is placed, billing and fulfilment must react exactly as if every message were delivered
+  once and in order — over infrastructure that guarantees neither.
+qualityAttributes:
+  - attribute: No lost events
+    scenario: The order service crashes immediately after committing an order.
+    measure: The OrderPlaced event is published after restart; zero orders without events in a daily reconciliation.
+    basis: requirement
+  - attribute: Effectively-once effects
+    scenario: Any message is delivered twice (relay crash, consumer timeout, replay).
+    measure: Zero duplicate charges or shipments in the duplicate-injection test suite.
+    basis: requirement
+  - attribute: Isolation of failures
+    scenario: One event cannot be processed (poison message).
+    measure: Other orders on the same partition continue within normal lag; the event reaches the DLQ with context within the retry window.
+    basis: requirement
+  - attribute: Latency
+    scenario: Normal load.
+    measure: p95 order-placed-to-charged under 2 s; outbox age p99 under 1 s.
+    basis: target
+  - attribute: Evolvability
+    scenario: A producer adds a field to OrderPlaced.
+    measure: Existing consumers keep working without redeploying; incompatible changes are rejected in CI.
+    basis: requirement
+diagrams:
+  - level: container
+    src: architecture/event-driven-processing/diagrams/c4-container
+    title: Containers
+    description: The order API writes orders and outbox rows in one transaction to PostgreSQL. An outbox relay validates schemas against a registry and publishes events keyed by order id to a partitioned log. Billing and fulfilment consumers process events idempotently using inbox tables; billing charges a payment provider with idempotency keys. Transient failures go to delayed retry topics, permanent ones to a dead-letter topic, from which an operator tool re-publishes fixed events.
+  - level: sequence
+    src: architecture/event-driven-processing/diagrams/failure-handling
+    title: Message lifecycle and failure handling
+    description: A received message is acknowledged immediately if its id is already in the inbox. Otherwise it is processed; success commits the inbox record and the effect together. Transient errors move it through 1-minute, 10-minute and 1-hour retry tiers; permanent errors or exhausted retries dead-letter it, and an operator can fix and re-publish it, which starts the lifecycle again.
+---
+
+<Callout type="important" title="About this case study">
+  An **illustrative reference architecture** for asynchronous processing. The domain (orders, billing,
+  fulfilment) is a familiar stand-in; the patterns apply to any event-driven system. Latency figures are
+  **targets**, not measurements.
+</Callout>
+
+## 1. Context and business problem
+
+An e-commerce order service used to call billing and fulfilment synchronously. Every slow dependency
+made checkout slow, and every failure mid-way left orders half-processed — charged but not shipped, or
+shipped but not charged. The team moved to events: checkout records the order and returns; downstream
+services react asynchronously.
+
+That move trades one class of problems for another. Messages can now be **lost, duplicated, delayed or
+reordered**, and the design has to make each of those harmless.
+
+## 2. Requirements and constraints
+
+| Constraint | Consequence for the design |
+| --- | --- |
+| Charging a card twice is unacceptable. | Effects must be idempotent end-to-end, including the external payment API. |
+| Services are owned and deployed by different teams. | Schemas are contracts with compatibility rules; no shared databases. |
+| The broker and network can fail at any point. | Assume at-least-once delivery; never rely on "exactly-once" marketing. |
+| Order-level sequences matter (place → cancel). | Ordering per aggregate, not globally. |
+| On-call engineers must be able to recover failed work. | Failures must be visible, inspectable and replayable. |
+
+## 3. Functional and non-functional requirements
+
+**Functional**
+
+1. Publish an event for every committed state change of an order.
+2. Billing charges on placement and refunds on cancellation; fulfilment reserves and ships.
+3. Failed events are retried, dead-lettered when unrecoverable, and replayable after a fix.
+4. New consumers can be added and bootstrapped from retained history.
+
+**Non-functional:**
+
+<QualityAttributes />
+
+## 4. Quality attributes and acceptance criteria
+
+The decisive attribute is **effectively-once effects** — and it is tested, not asserted: a test suite
+injects duplicates at every hop (relay, broker, consumer acknowledgement, replay) and checks the
+effects.
+
+## 5. Architecture and system boundaries
+
+- **Producer boundary:** the order service owns its database, including the outbox. "It happened" is a
+  database commit; "everyone was told" is the relay's job.
+- **Messaging boundary:** a partitioned, retained log; schemas registered with compatibility rules.
+- **Consumer boundary:** each consumer owns its database and its inbox; side effects and inbox records
+  commit together. Across organisational boundaries (payments), idempotency keys extend the guarantee.
+
+## 6. Context, container and component views
+
+<C4Views />
+
+### Explore the system
+
+<ArchitectureDiagram system="event-driven-processing" />
+
+## 7. Important design decisions
+
+<ADR id="ED-ADR-001" />
+
+<ADR id="ED-ADR-002" />
+
+An idempotent consumer in practice — the inbox insert and the effect share one transaction:
+
+```csharp
+public async Task HandleAsync(OrderPlaced evt, CancellationToken ct)
+{
+    await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+    // Unique key on message_id: a duplicate delivery inserts nothing.
+    var first = await db.Database.ExecuteSqlAsync(
+        $"INSERT INTO inbox (message_id, received_at) VALUES ({evt.EventId}, now()) ON CONFLICT DO NOTHING", ct) == 1;
+
+    if (first)
+    {
+        var invoice = Invoice.For(evt);
+        db.Invoices.Add(invoice);
+        await db.SaveChangesAsync(ct);
+        // The provider de-duplicates on the key, so a retry after a timeout cannot double-charge.
+        await payments.ChargeAsync(invoice.Total, idempotencyKey: $"charge:{evt.EventId}", ct);
+    }
+
+    await tx.CommitAsync(ct);
+}
+```
+
+<ADR id="ED-ADR-003" />
+
+<ADR id="ED-ADR-004" />
+
+## 8. Alternatives considered
+
+<Tradeoffs
+  title="Delivery semantics"
+  criteria="No lost effects, no duplicated effects, operational simplicity, portability."
+  options={[
+    { name: "At-most-once", benefits: ["Simple", "No duplicates"], drawbacks: ["Loses events on any failure"], chooseWhen: "Metrics or telemetry where loss is acceptable." },
+    { name: "Broker 'exactly-once'", benefits: ["Less consumer code inside the broker's world"], drawbacks: ["Ends at the broker boundary", "Vendor-specific"], chooseWhen: "Stream-to-stream transformations within one platform." },
+    { name: "At-least-once + idempotent effects", benefits: ["Covers databases and external APIs", "Portable", "Makes retries and replays safe"], drawbacks: ["Inbox writes", "Idempotency keys to design"], chooseWhen: "Business effects such as payments and shipments.", selected: true }
+  ]}
+/>
+
+## 9. Trade-offs and rejected alternatives
+
+- **Per-aggregate ordering only.** Global ordering would serialise the system; accepted that events of
+  different orders can interleave arbitrarily.
+- **Retries can reorder events of the same aggregate.** Accepted; consumers check aggregate versions and
+  park early arrivals.
+- **Eventual consistency is visible to users.** "Payment pending" is a real UI state for a second or two;
+  accepted and designed for.
+- Rejected: **synchronous orchestration** (the original problem), **distributed transactions** (fragile,
+  couples availability), and **dropping messages after N attempts** (silent loss).
+
+## 10. Security and trust boundaries
+
+- **Topic ACLs per service:** producers write only their topics; consumers read only what they need.
+- **Events carry identifiers, not secrets:** card data never enters events; payment uses provider tokens.
+- **Personal data minimisation:** events carry what consumers need; DLQ access is restricted because
+  dead-lettered events may contain personal data.
+- **Replay is privileged:** bulk replays need a second approver and are audited.
+- **Schema validation at publish time** prevents malformed or oversized payloads entering the log.
+
+## 11. Failure modes and recovery behaviour
+
+<Mermaid
+  src="architecture/event-driven-processing/diagrams/failure-handling"
+  title="Message lifecycle"
+  description="Received messages are acknowledged as duplicates if already in the inbox, otherwise processed. Transient failures pass through three delayed retry tiers; permanent failures and exhausted retries are dead-lettered and can be re-published by an operator after a fix."
+/>
+
+<Tradeoffs
+  title="Failure modes and their containment"
+  columns={{ option: "Failure", benefits: "Containment", drawbacks: "Impact", chooseWhen: "Detection & recovery" }}
+  options={[
+    { name: "Broker unavailable", benefits: ["Orders still accepted (outbox)"], drawbacks: ["Downstream delayed"], chooseWhen: "Detection: outbox age. Recovery: relay drains automatically." },
+    { name: "Duplicate delivery", benefits: ["Inbox makes it a no-op"], drawbacks: ["One wasted read/insert"], chooseWhen: "Detection: duplicate-rate metric. Recovery: none needed." },
+    { name: "Poison message", benefits: ["Moved off the partition; others flow"], drawbacks: ["That order waits for a fix"], chooseWhen: "Detection: DLQ size/age alert. Recovery: fix, then replay with original ids." },
+    { name: "Dependency outage (payments)", benefits: ["Circuit breaker pauses consumption"], drawbacks: ["Charges delayed"], chooseWhen: "Detection: error rate, breaker state. Recovery: resume; retries carry idempotency keys." }
+  ]}
+/>
+
+## 12. Scalability and performance reasoning
+
+<Callout type="assumption" title="Design assumptions">
+  Peak 500 orders/s, ~4 events per order lifecycle, 2 KB per event. These inputs size partitions and
+  retention; they are not measurements.
+</Callout>
+
+- Peak event rate ≈ 500 × 4 = **2,000 events/s**, ≈ 4 MB/s — modest for a partitioned log; the limit is
+  consumer processing time, not the broker.
+- If billing takes ~40 ms per event including the payment call, one consumer instance processes ~25
+  events/s; meeting 500 placements/s needs ~20 parallel consumers, so **≥ 24 partitions** (headroom for
+  rebalancing and hot keys). Partition count is the ceiling on parallelism, so it is chosen up front.
+- **Retention** of 7 days ≈ 2,000 × 86,400 × 7 × 2 KB ≈ **2.4 TB** before replication — the price of
+  replay and bootstrapping new consumers, weighed explicitly.
+- **Back-pressure:** consumers pull; lag grows instead of anything falling over. Autoscaling uses lag,
+  bounded by partition count.
+
+## 13. Observability and operational considerations
+
+- **Outbox age** (oldest unpublished row) — the earliest sign of a stuck relay or broker.
+- **Consumer lag per partition** — detects hot keys and slow consumers.
+- **Retry and DLQ rates by error class**, with DLQ age; every DLQ has an owning team.
+- **Duplicate rate** at inboxes — rising duplicates point at unstable consumers or rebalancing storms.
+- **End-to-end traces:** trace context travels in event headers so one order can be followed across
+  services; contract tests assert propagation.
+
+## 14. Testing and validation strategy
+
+| Risk | Test |
+| --- | --- |
+| Lost events | Kill the producer between commit and publish; assert the event is published after restart. |
+| Duplicate effects | Inject duplicates at relay, broker and consumer-ack points; assert one charge, one shipment. |
+| Reordering | Deliver cancel before place (after replay); assert parking and eventual correct state. |
+| Poison isolation | Publish an unprocessable event; assert other orders on the same partition meet lag targets. |
+| Schema evolution | CI compatibility check against the registry; consumer contract tests with old and new schemas. |
+| Recovery | Game day: fill the DLQ from a simulated dependency bug, deploy the fix, bulk-replay, reconcile. |
+
+## 15. Outcomes and lessons learned
+
+**Outcomes.** No production metrics are claimed. The design is validated by the duplicate-injection,
+crash and game-day tests above, and by a daily reconciliation between orders, charges and shipments.
+
+**Lessons:**
+
+- *There is no exactly-once delivery — only idempotent effects.* Design every consumer as if every
+  message arrives twice.
+- *Order where the business needs it, nowhere else.* Partition by aggregate.
+- *Failures are a product feature.* Retry tiers, a DLQ with context and a replay tool are what make
+  on-call humane.
+- *Measure age and lag, not just errors.* Asynchronous systems fail by quietly waiting.

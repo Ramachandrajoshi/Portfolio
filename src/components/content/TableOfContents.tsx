@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 
 export interface TocItem {
   title: string;
@@ -24,7 +24,9 @@ export function TableOfContents({ items, title = 'On this page' }: { items: TocI
     if (!headings.length) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
         if (visible[0]) setActive(`#${visible[0].target.id}`);
       },
       { rootMargin: '-80px 0px -65% 0px', threshold: 0 },
@@ -64,7 +66,7 @@ function TocLink({ item, active, nested = false }: { item: TocItem; active: stri
     <a
       href={item.url}
       aria-current={isActive ? 'location' : undefined}
-      className={cn(
+      className={cx(
         '-ml-px block border-l py-1 pr-2 leading-snug transition-colors',
         nested ? 'pl-6 text-[0.8rem]' : 'pl-3',
         isActive ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg',

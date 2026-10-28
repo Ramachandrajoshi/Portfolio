@@ -1,0 +1,81 @@
+# Pull-request quality gate. Every check must pass before merge:
+# lint · types · unit + content tests · static build · export validation · bundle budgets ·
+# Playwright smoke/a11y tests against the export under a non-root base path · Lighthouse CI.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Build as a GitHub Pages *project* site so every test exercises the base path.
+  NEXT_PUBLIC_SITE_URL: http://localhost:4173/portfolio
+  # Public Formspree-style id used only so the form renders; requests are mocked in tests.
+  NEXT_PUBLIC_FORMSPREE_FORM_ID: testform1
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  checks:
+    name: Lint, types and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium (Mermaid diagrams render in a headless browser)
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Validate data modules
+        run: pnpm validate:data
+      - name: Build content and diagrams (fails on invalid frontmatter or diagram source)
+        run: pnpm content
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  build-and-test:
+    name: Build, validate export, browser tests and budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Production static build (content, diagrams, OG images, Next export, Pagefind)
+        run: pnpm build
+      - name: Validate the exported artifact (routes, links, canonicals, drafts, search index)
+        run: pnpm exec tsx scripts/check-export.ts
+      - name: Enforce JavaScript budgets (initial route + lazy chunks)
+        run: pnpm budgets
+      - name: Playwright (routes, theme, hero fallbacks, explorer, contact, search, mobile, axe)
+        run: pnpm test:e2e
+      - name: Lighthouse CI (mobile profile)
+        run: pnpm lhci
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            playwright-report/
+            .lighthouseci/
+          retention-days: 14

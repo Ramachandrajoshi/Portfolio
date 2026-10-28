@@ -1,0 +1,290 @@
+# Interactive system model for the industrial telemetry case study (illustrative).
+caseStudy: industrial-telemetry-platform
+title: Industrial telemetry platform — container view
+description: >-
+  Edge gateways buffer and forward plant telemetry over MQTT; the cloud validates, de-duplicates and
+  streams it to a stateful alarm engine and to TimescaleDB. Play a scenario to follow a reading, an
+  outage replay or an alarm.
+groups:
+  - { id: site, label: Plant site, trust: edge }
+  - { id: ingest, label: Ingestion, trust: dmz }
+  - { id: processing, label: Processing, trust: internal }
+  - { id: storage, label: Storage, trust: restricted }
+nodes:
+  - id: plc
+    label: PLCs & sensors
+    kind: edge
+    group: site
+    position: { x: 0, y: 160 }
+    technology: OPC UA / Modbus devices
+    responsibility: Produce the raw signals — temperatures, pressures, motor currents, counters, states.
+    rationale: The platform adapts to existing plant equipment rather than requiring changes on the shop floor.
+    interfaces: [OPC UA subscriptions, Modbus TCP polling]
+    failureModes:
+      - mode: Sensor drift or stuck value
+        effect: Plausible-looking but wrong data.
+        mitigation: Range and rate-of-change validation; stale-value detection on the gateway and in ingestion.
+    security: [Plant network isolated from the internet, Read-only access from the gateway]
+  - id: gateway
+    label: Edge gateway
+    kind: edge
+    group: site
+    position: { x: 240, y: 160 }
+    technology: Containerised agent on an industrial PC
+    responsibility: Polls devices, normalises units and tag names, stamps source time and sequence numbers, buffers to disk and publishes over MQTT.
+    rationale: Connectivity is intermittent — the edge must own buffering, identity and back-pressure.
+    interfaces: [OPC UA / Modbus (southbound), MQTT 5 over TLS (northbound), Local disk queue]
+    failureModes:
+      - mode: Uplink outage
+        effect: Cloud sees no data from the site.
+        mitigation: Store-and-forward; rate-limited replay on reconnect; buffer depth alerting.
+      - mode: Gateway clock skew
+        effect: Misordered or misdated readings.
+        mitigation: NTP with drift monitoring; ingestion records both source and receive time.
+    security: [Per-device X.509 certificate (mTLS), Outbound-only connections, Signed agent updates]
+    adrs: [IOT-ADR-001]
+  - id: broker
+    label: MQTT broker cluster
+    kind: broker
+    group: ingest
+    position: { x: 480, y: 160 }
+    technology: MQTT 5 broker (clustered)
+    responsibility: Terminates device connections and routes messages by topic (tenant/site/device).
+    rationale: MQTT suits constrained, intermittent links; topics map naturally to the tenant/site hierarchy.
+    interfaces: [MQTT 5 (devices), Shared subscriptions (ingestion)]
+    failureModes:
+      - mode: Broker node loss
+        effect: Devices reconnect to another node.
+        mitigation: Clustered brokers behind a load balancer; QoS 1 plus edge buffering covers the gap.
+    security: [mTLS with per-device certs, Topic ACLs bound to the certificate identity]
+  - id: ingestor
+    label: Ingestion service
+    kind: service
+    group: ingest
+    position: { x: 720, y: 160 }
+    technology: .NET worker service
+    responsibility: Validates schema and ranges, enriches with asset metadata, de-duplicates by message identity and appends accepted readings to the event stream.
+    rationale: One place enforces data quality and identity, so every consumer downstream sees the same clean stream.
+    interfaces: [MQTT shared subscription, Event stream producer, Device registry lookup]
+    failureModes:
+      - mode: Burst after a site reconnects
+        effect: Ingestion lag grows.
+        mitigation: Horizontal scaling on lag; edge replay rate limits; live data prioritised by topic.
+      - mode: Malformed payloads
+        effect: Could poison consumers.
+        mitigation: Rejected to a quarantine topic with the reason; never forwarded.
+    security: [Topic → tenant mapping verified against the device certificate, Payload size limits]
+    adrs: [IOT-ADR-001]
+  - id: stream
+    label: Event stream
+    kind: broker
+    group: processing
+    position: { x: 960, y: 160 }
+    technology: Durable, partitioned log
+    responsibility: Retains accepted readings for replay and fans them out to independent consumers.
+    rationale: Decouples ingestion from storage and alarming; consumers can be rebuilt by replaying.
+    interfaces: [Produce (ingestion), Consume (writer, alarm engine)]
+    failureModes:
+      - mode: Consumer falls behind
+        effect: Storage or alarms lag.
+        mitigation: Lag alerts per consumer group; partitions by tenant/site for parallelism.
+    security: [Per-service credentials, Encrypted at rest]
+  - id: writer
+    label: Storage writer
+    kind: worker
+    group: processing
+    position: { x: 1200, y: 60 }
+    technology: .NET worker (batched COPY)
+    responsibility: Writes readings to TimescaleDB in large batches, archives raw data to object storage and updates latest values in Redis.
+    rationale: Batching turns many small writes into few large ones — the difference between keeping up and falling behind.
+    interfaces: [Event stream consumer, PostgreSQL COPY, Object storage PUT, Redis SET]
+    failureModes:
+      - mode: Database unavailable
+        effect: Writes pause.
+        mitigation: Consumer stops committing offsets; resumes from the stream without loss.
+    security: [Insert-only database role]
+    adrs: [IOT-ADR-002]
+  - id: alarms
+    label: Alarm engine
+    kind: worker
+    group: processing
+    position: { x: 1200, y: 260 }
+    technology: Stateful stream processor
+    responsibility: Evaluates alarm rules with deadbands, minimum durations and hysteresis; tracks alarm lifecycle and emits transitions.
+    rationale: Meaningful alarms need state; evaluating on the stream keeps latency independent of storage.
+    interfaces: [Event stream consumer, Alarm events (API, notifications)]
+    failureModes:
+      - mode: Engine restart
+        effect: In-memory state lost.
+        mitigation: State rebuilt from persisted alarm events and recent readings; notifications are idempotent per alarm instance.
+    security: [Rule changes versioned and audited]
+    adrs: [IOT-ADR-003]
+  - id: timescale
+    label: TimescaleDB
+    kind: database
+    group: storage
+    position: { x: 1440, y: 20 }
+    technology: PostgreSQL + TimescaleDB
+    responsibility: Stores readings in compressed hypertables with continuous aggregates and retention policies.
+    rationale: SQL, joins with asset metadata, and built-in compression and roll-ups.
+    interfaces: [SQL]
+    failureModes:
+      - mode: Expensive ad-hoc queries
+        effect: Starve ingestion.
+        mitigation: Queries served from aggregates; read replica for analysts; statement timeouts.
+    security: [Row-level tenant filter on shared tables, Per-role grants]
+    adrs: [IOT-ADR-002]
+  - id: objstore
+    label: Object storage
+    kind: storage
+    position: { x: 1440, y: 120 }
+    technology: S3-compatible object storage
+    responsibility: Holds the immutable raw archive (hourly files per site) and larger artefacts such as waveforms.
+    rationale: Cheap, durable audit trail that allows rebuilding the database if needed.
+    interfaces: [PUT / GET objects]
+    failureModes:
+      - mode: Archive write failure
+        effect: Gap in the audit trail.
+        mitigation: Retries; archive completeness check per hour per site.
+    security: [Write-once bucket policy, Encryption with tenant-scoped keys]
+  - id: redis
+    label: Latest values cache
+    kind: cache
+    group: storage
+    position: { x: 1440, y: 220 }
+    technology: Redis
+    responsibility: Keeps the last value per tag for live dashboards.
+    rationale: Live views must not scan time-series tables.
+    interfaces: [SET / MGET]
+    failureModes:
+      - mode: Cache loss
+        effect: Live view empty until next readings.
+        mitigation: Rebuilt from the stream within seconds; fallback query to the latest aggregate.
+    security: [Private network, AUTH + TLS]
+  - id: api
+    label: Query API
+    kind: service
+    position: { x: 1440, y: 340 }
+    technology: .NET / ASP.NET Core
+    responsibility: Serves trends, aggregates, live values and alarm state to the UI and integrations, scoped by tenant.
+    rationale: One authorisation point; hides storage tiers behind a time-range API.
+    interfaces: [REST, WebSocket (live values and alarms)]
+    failureModes:
+      - mode: Expensive range queries
+        effect: Slow dashboards.
+        mitigation: Automatic resolution selection (raw / 1 min / 1 h) by time range; result caps.
+    security: [OIDC tokens, Tenant scoping on every query]
+  - id: ui
+    label: Operations UI
+    kind: client
+    position: { x: 1680, y: 340 }
+    technology: SPA
+    responsibility: Live plant overview, trends and alarm handling for operators and engineers.
+    rationale: Designed for alarm acknowledgement and shelving workflows, not just charts.
+    interfaces: [HTTPS, WebSocket]
+    failureModes:
+      - mode: WebSocket disconnect
+        effect: Stale live view.
+        mitigation: Visible staleness indicator; automatic resubscribe.
+    security: [OIDC, Role-based actions (acknowledge, shelve)]
+  - id: notify
+    label: Notification service
+    kind: external
+    position: { x: 1680, y: 220 }
+    technology: E-mail / SMS / push provider
+    responsibility: Delivers alarm notifications to on-call staff.
+    rationale: Delivery is a specialised problem; the platform sends idempotent requests per alarm transition.
+    interfaces: [HTTPS API]
+    failureModes:
+      - mode: Provider outage
+        effect: Notifications delayed.
+        mitigation: Secondary channel; alarms remain visible in the UI.
+    security: [API key in secret store, Minimal data in messages]
+  - id: otel
+    label: Telemetry pipeline
+    kind: monitoring
+    position: { x: 960, y: 360 }
+    technology: OpenTelemetry collector
+    responsibility: Collects platform metrics — ingestion lag, gateway buffer depth, alarm rates, aggregate refresh lag.
+    rationale: The platform's own health signals are as important as the plant's.
+    interfaces: [OTLP]
+    failureModes:
+      - mode: Collector overload
+        effect: Monitoring gaps.
+        mitigation: Sampling and memory limits; services never block on export.
+    security: [No payload data in telemetry]
+edges:
+  - { id: e-plc-gw, source: plc, target: gateway, label: Poll / subscribe, protocol: OPC UA / Modbus, mode: stream }
+  - {
+      id: e-gw-broker,
+      source: gateway,
+      target: broker,
+      label: Publish readings,
+      protocol: MQTT 5 QoS 1 + mTLS,
+      mode: async,
+    }
+  - { id: e-broker-ingest, source: broker, target: ingestor, label: Shared subscription, protocol: MQTT, mode: async }
+  - {
+      id: e-ingest-stream,
+      source: ingestor,
+      target: stream,
+      label: Accepted readings,
+      protocol: Log append,
+      mode: stream,
+    }
+  - { id: e-stream-writer, source: stream, target: writer, label: Consume, protocol: Consumer group, mode: stream }
+  - { id: e-stream-alarms, source: stream, target: alarms, label: Consume, protocol: Consumer group, mode: stream }
+  - { id: e-writer-ts, source: writer, target: timescale, label: Batched COPY, protocol: PostgreSQL, mode: batch }
+  - { id: e-writer-obj, source: writer, target: objstore, label: Hourly raw archive, protocol: S3 API, mode: batch }
+  - { id: e-writer-redis, source: writer, target: redis, label: Latest values, protocol: Redis, mode: sync }
+  - { id: e-alarms-api, source: alarms, target: api, label: Alarm transitions, protocol: Events, mode: async }
+  - { id: e-alarms-notify, source: alarms, target: notify, label: Notify on transition, protocol: HTTPS, mode: async }
+  - { id: e-api-ts, source: api, target: timescale, label: Range / aggregate query, protocol: SQL, mode: sync }
+  - { id: e-api-redis, source: api, target: redis, label: Live values, protocol: Redis, mode: sync }
+  - { id: e-ui-api, source: ui, target: api, label: Dashboards & alarms, protocol: HTTPS + WebSocket, mode: sync }
+  - { id: e-ingest-otel, source: ingestor, target: otel, label: Lag & quality metrics, protocol: OTLP, mode: stream }
+flows:
+  - id: reading
+    title: A reading's journey
+    description: From a sensor to a dashboard in seconds, validated once and stored in tiers.
+    steps:
+      - { edge: e-plc-gw, note: The gateway polls a PLC tag and stamps source time and a sequence number. }
+      - { edge: e-gw-broker, note: It writes the reading to its disk queue, then publishes with QoS 1. }
+      - {
+          edge: e-broker-ingest,
+          note: The broker hands the message to one ingestion instance via a shared subscription.,
+        }
+      - {
+          edge: e-ingest-stream,
+          note: Ingestion validates,
+          enriches and de-duplicates,
+          then appends to the event stream.,
+        }
+      - { edge: e-stream-writer, note: The storage writer consumes in batches. }
+      - { edge: e-writer-ts, note: A COPY batch lands in a TimescaleDB hypertable; aggregates refresh later. }
+      - { edge: e-writer-redis, note: The latest value per tag is updated for live views. }
+  - id: outage
+    title: Replaying an outage
+    description: Hours of buffered data return without duplicates and without starving live data.
+    steps:
+      - {
+          edge: e-gw-broker,
+          note: The uplink returns; the gateway replays its backlog at the site's agreed rate,
+          interleaved with live data.,
+        }
+      - { edge: e-broker-ingest, note: Some messages arrive twice (QoS 1 after a lost ack). }
+      - { edge: e-ingest-stream, note: Ingestion drops duplicates by message identity and tags late data. }
+      - {
+          edge: e-stream-writer,
+          note: The writer inserts late readings; chunks already compressed go through a correction path.,
+        }
+      - { edge: e-writer-obj, note: The hourly archive for the outage window is completed and checked. }
+  - id: alarm
+    title: Raising an alarm
+    description: Stateful evaluation turns a noisy signal into one meaningful notification.
+    steps:
+      - { edge: e-ingest-stream, note: Accepted readings arrive on the stream. }
+      - { edge: e-stream-alarms, note: The alarm engine applies deadband, minimum duration and hysteresis. }
+      - { edge: e-alarms-notify, note: On the transition to "active", one idempotent notification is sent. }
+      - { edge: e-alarms-api, note: The transition is published to the API. }
+      - { edge: e-ui-api, note: Operators see the alarm live and acknowledge it in the UI. }

@@ -54,9 +54,24 @@ export function Diagram({ src, title, description, className, showSource = true 
   };
   return (
     <figure className={cn('not-prose my-8', className)} data-component="diagram" data-engine={entry.engine}>
-      <div className="overflow-x-auto rounded-lg border border-border bg-surface p-3 sm:p-5">
-        <img src={asset(`/generated/diagrams/${src}.light.svg`)} alt={title} {...common} className={cn(common.className, 'only-light')} />
-        <img src={asset(`/generated/diagrams/${src}.dark.svg`)} alt={title} {...common} className={cn(common.className, 'only-dark')} />
+      <div
+        className="overflow-x-auto rounded-lg border border-border bg-surface p-3 sm:p-5"
+        tabIndex={0}
+        role="region"
+        aria-label={`${title} (diagram)`}
+      >
+        <img
+          src={asset(`/generated/diagrams/${src}.light.svg`)}
+          alt={title}
+          {...common}
+          className={cn(common.className, 'only-light')}
+        />
+        <img
+          src={asset(`/generated/diagrams/${src}.dark.svg`)}
+          alt={title}
+          {...common}
+          className={cn(common.className, 'only-dark')}
+        />
       </div>
       <figcaption className="mt-3 text-sm text-muted">
         <span className="font-semibold text-fg">{title}.</span> <span id={descId}>{description}</span>
@@ -64,9 +79,13 @@ export function Diagram({ src, title, description, className, showSource = true 
       {code ? (
         <details className="mt-2 text-sm">
           <summary className="cursor-pointer text-muted hover:text-fg">
-            View diagram source ({entry.engine === 'd2' ? 'D2' : 'Mermaid'} · <code className="font-mono text-xs">{entry.source}</code>)
+            View diagram source ({entry.engine === 'd2' ? 'D2' : 'Mermaid'} ·{' '}
+            <code className="font-mono text-xs">{entry.source}</code>)
           </summary>
-          <pre className="mt-2 max-h-96 overflow-auto rounded-md border border-border bg-surface-2 p-3 font-mono text-xs leading-relaxed">
+          <pre
+            tabIndex={0}
+            className="mt-2 max-h-96 overflow-auto rounded-md border border-border bg-surface-2 p-3 font-mono text-xs leading-relaxed"
+          >
             <code>{code}</code>
           </pre>
         </details>

@@ -1,0 +1,48 @@
+# C4 Level 2 — Containers: Industrial telemetry platform (illustrative reference architecture)
+direction: right
+
+classes: {
+  container: {style.border-radius: 8}
+  db: {shape: cylinder}
+  queue: {shape: queue}
+  external: {style.stroke-dash: 4; style.border-radius: 8}
+}
+
+site: "Plant site (per tenant)" {
+  plc: "PLCs & sensors\n[OPC UA, Modbus]" {class: external}
+  edge: "Edge gateway\n[containerised agent]\nPoll, normalise, buffer\n(store-and-forward)" {class: container}
+  plc -> edge: Poll / subscribe
+}
+
+ingest: "Ingestion" {
+  broker: "MQTT broker cluster\n[MQTT 5, mTLS]" {class: queue}
+  ingestor: "Ingestion service\n[validate, enrich,\nde-duplicate, batch]" {class: container}
+  bus: "Event stream\n[durable log]" {class: queue}
+  broker -> ingestor: Shared subscription
+  ingestor -> bus: Accepted readings
+}
+
+processing: "Processing" {
+  alarms: "Alarm engine\n[stateful rules,\nhysteresis, dedup]" {class: container}
+  writer: "Storage writer\n[batched inserts]" {class: container}
+}
+
+storage: "Storage" {
+  ts: "TimescaleDB\n[hypertables, compression,\ncontinuous aggregates]" {class: db}
+  obj: "Object storage\n[raw archive, files]" {class: db}
+  cache: "Redis\n[latest value per tag]" {class: db}
+}
+
+api: "Query API\n[.NET]" {class: container}
+ui: "Operations UI\n[SPA]" {class: container}
+
+site.edge -> ingest.broker: "MQTT QoS 1 over TLS" {style.stroke-dash: 4}
+ingest.bus -> processing.alarms
+ingest.bus -> processing.writer
+processing.writer -> storage.ts: COPY batches
+processing.writer -> storage.obj: Raw archive (hourly)
+processing.writer -> storage.cache: Latest values
+processing.alarms -> api: Alarm events
+api -> storage.ts: Range & aggregate queries
+api -> storage.cache: Live values
+ui -> api: HTTPS + WebSocket

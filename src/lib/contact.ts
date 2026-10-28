@@ -14,7 +14,14 @@ export interface ContactInput {
 
 export type ContactErrors = Partial<Record<'name' | 'email' | 'topic' | 'message', string>>;
 
-export const CONTACT_TOPICS = ['Architecture review', 'System design', 'AI / inference', 'IoT / telemetry', 'Speaking or writing', 'Something else'] as const;
+export const CONTACT_TOPICS = [
+  'Architecture review',
+  'System design',
+  'AI / inference',
+  'IoT / telemetry',
+  'Speaking or writing',
+  'Something else',
+] as const;
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -47,7 +54,11 @@ export function formspreeEndpoint(formId: string | undefined): string | null {
 
 export type SubmitResult = { ok: true } | { ok: false; message: string };
 
-export async function submitContact(endpoint: string, input: ContactInput, fetchImpl: typeof fetch = fetch): Promise<SubmitResult> {
+export async function submitContact(
+  endpoint: string,
+  input: ContactInput,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SubmitResult> {
   try {
     const response = await fetchImpl(endpoint, {
       method: 'POST',
@@ -64,7 +75,11 @@ export async function submitContact(endpoint: string, input: ContactInput, fetch
     });
     if (response.ok) return { ok: true };
     const data = (await response.json().catch(() => null)) as { errors?: { message: string }[] } | null;
-    return { ok: false, message: data?.errors?.map((e) => e.message).join(' ') || `The form service returned an error (${response.status}).` };
+    return {
+      ok: false,
+      message:
+        data?.errors?.map((e) => e.message).join(' ') || `The form service returned an error (${response.status}).`,
+    };
   } catch {
     return { ok: false, message: 'Could not reach the form service. Check your connection and try again.' };
   }

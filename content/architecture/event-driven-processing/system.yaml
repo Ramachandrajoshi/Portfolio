@@ -1,0 +1,293 @@
+# Interactive system model for the event-driven processing case study (illustrative).
+caseStudy: event-driven-processing
+title: Event-driven order processing — container view
+description: >-
+  An order service publishes events through a transactional outbox to a partitioned log; idempotent
+  consumers apply them with inbox tables, and failures flow through delayed retries to a dead-letter
+  topic with an operator replay tool. Play a scenario to watch delivery, a duplicate or a poison message.
+groups:
+  - { id: producer, label: Order service, trust: internal }
+  - { id: platform, label: Messaging, trust: internal }
+  - { id: consumers, label: Consumers, trust: internal }
+nodes:
+  - id: client
+    label: Checkout clients
+    kind: client
+    position: { x: 0, y: 140 }
+    technology: Web and mobile checkout
+    responsibility: Place and cancel orders.
+    rationale: Clients only see the synchronous order API; everything downstream is asynchronous.
+    interfaces: [HTTPS]
+    failureModes:
+      - mode: Client retries a timed-out request
+        effect: Could create duplicate orders.
+        mitigation: Idempotency-Key header on order creation, stored with the order.
+    security: [OIDC tokens]
+  - id: api
+    label: Order API
+    kind: service
+    group: producer
+    position: { x: 240, y: 140 }
+    technology: .NET / ASP.NET Core
+    responsibility: Validates and records orders; writes the order and its event to the outbox in one transaction.
+    rationale: The only synchronous step; it never waits for downstream consumers.
+    interfaces: [REST, SQL]
+    failureModes:
+      - mode: Broker unavailable
+        effect: None for order writes.
+        mitigation: Outbox decouples writes from publishing.
+    security: [Request validation, Per-client rate limits]
+    adrs: [ED-ADR-001]
+  - id: ordersdb
+    label: Orders DB
+    kind: database
+    group: producer
+    position: { x: 480, y: 40 }
+    technology: PostgreSQL (orders + outbox)
+    responsibility: Source of truth for orders and the outbox of not-yet-published events.
+    rationale: Atomicity between state and event comes from the database transaction.
+    interfaces: [SQL]
+    failureModes:
+      - mode: Outbox growth
+        effect: Storage and query cost.
+        mitigation: Published rows deleted after a retention window; alert on oldest unpublished row.
+    security: [Least-privilege roles for API and relay]
+    adrs: [ED-ADR-001]
+  - id: relay
+    label: Outbox relay
+    kind: worker
+    group: producer
+    position: { x: 480, y: 240 }
+    technology: Polling publisher (CDC later)
+    responsibility: Publishes outbox rows in commit order per aggregate, then marks them published.
+    rationale: Separates "it happened" (commit) from "everyone has been told" (publish).
+    interfaces: [SQL, Log producer, Schema registry]
+    failureModes:
+      - mode: Crash after publish, before marking
+        effect: The event is published twice.
+        mitigation: Expected — consumers are idempotent (ED-ADR-002).
+    security: [Producer credentials scoped to its topics]
+    adrs: [ED-ADR-001]
+  - id: registry
+    label: Schema registry
+    kind: service
+    group: platform
+    position: { x: 720, y: 40 }
+    technology: Schema registry with compatibility rules
+    responsibility: Stores event schemas and rejects incompatible changes (backward compatibility for consumers).
+    rationale: Producers and consumers deploy independently; schemas are the contract between them.
+    interfaces: [Register / validate schema]
+    failureModes:
+      - mode: Incompatible schema change
+        effect: Consumers fail to deserialise.
+        mitigation: Compatibility check in CI and at publish time.
+    security: [Write access limited to CI]
+  - id: log
+    label: Event log
+    kind: broker
+    group: platform
+    position: { x: 720, y: 240 }
+    technology: Partitioned log, key = order id
+    responsibility: Durable, ordered-per-key distribution of events to independent consumer groups; retains events for replay.
+    rationale: Per-aggregate ordering with parallelism across aggregates; retention enables replay and new consumers.
+    interfaces: [Produce, Consume (consumer groups)]
+    failureModes:
+      - mode: Consumer group lag
+        effect: Downstream effects delayed.
+        mitigation: Per-partition lag alerts; scale consumers up to partition count.
+    security: [Per-service ACLs, Encryption in transit and at rest]
+    adrs: [ED-ADR-003]
+  - id: billing
+    label: Billing worker
+    kind: worker
+    group: consumers
+    position: { x: 960, y: 140 }
+    technology: .NET consumer
+    responsibility: Charges the customer when an order is placed; refunds on cancellation.
+    rationale: Payment is the effect that must never happen twice — idempotent inbox plus provider idempotency keys.
+    interfaces: [Consume, SQL (inbox), Payment API, Retry / DLQ produce]
+    failureModes:
+      - mode: Payment provider timeout
+        effect: Unknown charge outcome.
+        mitigation: Retry with the same idempotency key — the provider returns the original result.
+      - mode: Poison message
+        effect: Would block the partition.
+        mitigation: Classified as permanent; moved to the dead-letter topic with context.
+    security: [Payment credentials in secret store, PCI scope limited to provider tokens]
+    adrs: [ED-ADR-002, ED-ADR-004]
+  - id: billingdb
+    label: Billing DB + inbox
+    kind: database
+    group: consumers
+    position: { x: 1200, y: 60 }
+    technology: PostgreSQL
+    responsibility: Billing state plus the inbox of processed event ids.
+    rationale: Inbox insert and side effect share one transaction — exactly-once effect on this database.
+    interfaces: [SQL]
+    failureModes:
+      - mode: Inbox retention too short
+        effect: A very late redelivery could be re-applied.
+        mitigation: Retention longer than the log retention plus the replay window.
+    security: [Consumer-owned database — no shared tables]
+    adrs: [ED-ADR-002]
+  - id: fulfilment
+    label: Fulfilment worker
+    kind: worker
+    group: consumers
+    position: { x: 960, y: 300 }
+    technology: .NET consumer
+    responsibility: Reserves stock and creates shipments; parks events that arrive out of aggregate-version order.
+    rationale: Independent consumer group — slow fulfilment never delays billing.
+    interfaces: [Consume, SQL (inbox)]
+    failureModes:
+      - mode: Out-of-order event after replay
+        effect: Could apply a cancellation before the placement.
+        mitigation: Aggregate version check; park and retry.
+    security: [Consumer-owned database]
+    adrs: [ED-ADR-002, ED-ADR-003]
+  - id: retry
+    label: Retry topics
+    kind: broker
+    group: platform
+    position: { x: 1200, y: 220 }
+    technology: Delayed topics (1 m, 10 m, 1 h)
+    responsibility: Hold transiently failed events until their next attempt, without blocking the main partition.
+    rationale: Backoff without head-of-line blocking.
+    interfaces: [Produce, Consume after delay]
+    failureModes:
+      - mode: Dependency down for hours
+        effect: Retries pile up.
+        mitigation: Circuit breaker pauses consumption instead of churning retries.
+    security: [Same ACLs as the main log]
+    adrs: [ED-ADR-004]
+  - id: dlq
+    label: Dead-letter topic
+    kind: broker
+    group: platform
+    position: { x: 1200, y: 380 }
+    technology: Dead-letter topic with error context
+    responsibility: Parks events that cannot be processed, with the failure reason, stack trace reference and attempt history.
+    rationale: Failures become visible, inspectable work — never silent loss.
+    interfaces: [Produce, Inspect]
+    failureModes:
+      - mode: Unwatched DLQ
+        effect: Orders silently stuck.
+        mitigation: DLQ size and age alerts with an owning team.
+    security: [Access restricted — may contain personal data]
+    adrs: [ED-ADR-004]
+  - id: replay
+    label: Replay tool
+    kind: service
+    position: { x: 960, y: 460 }
+    technology: Operator UI + CLI
+    responsibility: Inspect dead-lettered events, fix or annotate them, and re-publish with original event ids.
+    rationale: Recovery is an operation with an audit trail, not an ad-hoc script.
+    interfaces: [DLQ read, Log produce]
+    failureModes:
+      - mode: Replaying the wrong range
+        effect: Load spike; duplicates.
+        mitigation: Dry-run mode; duplicates are harmless by design.
+    security: [Four-eyes approval for bulk replay, Audited]
+    adrs: [ED-ADR-004]
+  - id: payments
+    label: Payment provider
+    kind: external
+    position: { x: 1440, y: 140 }
+    technology: External API with idempotency keys
+    responsibility: Charges and refunds.
+    rationale: The provider's idempotency key extends exactly-once effects across the organisational boundary.
+    interfaces: [HTTPS + Idempotency-Key]
+    failureModes:
+      - mode: Provider rate limiting
+        effect: 429s.
+        mitigation: Classified transient; delayed retry tier.
+    security: [Tokenised card data only]
+  - id: monitor
+    label: Monitoring
+    kind: monitoring
+    position: { x: 720, y: 420 }
+    technology: Metrics, traces with propagated context
+    responsibility: Outbox age, consumer lag per partition, retry and DLQ rates, end-to-end latency via trace context in event headers.
+    rationale: Asynchronous systems fail quietly; lag and age are the signals that something is stuck.
+    interfaces: [OTLP]
+    failureModes:
+      - mode: Broken trace propagation
+        effect: Cannot follow an order across services.
+        mitigation: Trace context carried in event headers and asserted in contract tests.
+    security: [No payloads in telemetry]
+edges:
+  - { id: e-client-api, source: client, target: api, label: Place order (Idempotency-Key), protocol: HTTPS, mode: sync }
+  - { id: e-api-db, source: api, target: ordersdb, label: Order + outbox row (1 tx), protocol: SQL, mode: sync }
+  - { id: e-relay-db, source: relay, target: ordersdb, label: Read unpublished rows, protocol: SQL, mode: batch }
+  - { id: e-relay-registry, source: relay, target: registry, label: Validate schema, protocol: HTTPS, mode: sync }
+  - {
+      id: e-relay-log,
+      source: relay,
+      target: log,
+      label: Publish (key = order id),
+      protocol: Log protocol,
+      mode: async,
+    }
+  - { id: e-log-billing, source: log, target: billing, label: Deliver, protocol: Consumer group, mode: async }
+  - { id: e-log-fulfil, source: log, target: fulfilment, label: Deliver, protocol: Consumer group, mode: async }
+  - { id: e-billing-db, source: billing, target: billingdb, label: Inbox + effect (1 tx), protocol: SQL, mode: sync }
+  - {
+      id: e-billing-pay,
+      source: billing,
+      target: payments,
+      label: Charge (Idempotency-Key),
+      protocol: HTTPS,
+      mode: sync,
+    }
+  - { id: e-billing-retry, source: billing, target: retry, label: Transient failure, protocol: Produce, mode: async }
+  - {
+      id: e-retry-billing,
+      source: retry,
+      target: billing,
+      label: Redeliver after delay,
+      protocol: Consume,
+      mode: async,
+    }
+  - { id: e-billing-dlq, source: billing, target: dlq, label: Permanent failure, protocol: Produce, mode: async }
+  - { id: e-replay-dlq, source: replay, target: dlq, label: Inspect, protocol: Consume, mode: sync }
+  - { id: e-replay-log, source: replay, target: log, label: Re-publish (same ids), protocol: Produce, mode: async }
+  - { id: e-log-monitor, source: log, target: monitor, label: Lag & age metrics, protocol: OTLP, mode: stream }
+flows:
+  - id: happy-path
+    title: An order, end to end
+    description: One transaction in the producer, then independent, idempotent consumers.
+    steps:
+      - { edge: e-client-api, note: Checkout places an order with an Idempotency-Key. }
+      - { edge: e-api-db, note: The order and an OrderPlaced outbox row commit in one transaction. }
+      - { edge: e-relay-db, note: The relay reads unpublished outbox rows in commit order. }
+      - { edge: e-relay-log, note: It publishes with key = order id, then marks the row published. }
+      - { edge: e-log-billing, note: Billing receives OrderPlaced on the order's partition. }
+      - {
+          edge: e-billing-db,
+          note: Inbox insert succeeds (first delivery) in the same transaction as the billing record.,
+        }
+      - { edge: e-billing-pay, note: The card is charged with an idempotency key derived from the event id. }
+  - id: duplicate
+    title: A duplicate delivery
+    description: The relay crashes after publishing — the duplicate is absorbed harmlessly.
+    steps:
+      - { edge: e-relay-log, note: The relay publishes evt-42 but crashes before marking it published. }
+      - { edge: e-relay-log, note: After restart it publishes evt-42 again — at-least-once. }
+      - { edge: e-log-billing, note: Billing receives evt-42 a second time. }
+      - {
+          edge: e-billing-db,
+          note: The inbox insert hits the unique constraint — already processed; acknowledge with no side effect.,
+        }
+  - id: poison
+    title: A poison message and its recovery
+    description: Failures leave the main partition, become visible, and are replayed safely after a fix.
+    steps:
+      - { edge: e-log-billing, note: An event with an unexpected currency code arrives. }
+      - {
+          edge: e-billing-retry,
+          note: First classified as transient — moved to the 1-minute retry topic so the partition keeps flowing.,
+        }
+      - { edge: e-retry-billing, note: Retries exhaust the tiers. }
+      - { edge: e-billing-dlq, note: The event is dead-lettered with error, attempts and trace id. }
+      - { edge: e-replay-dlq, note: An operator inspects it; a fix to the currency mapping is deployed. }
+      - { edge: e-replay-log, note: The event is re-published with its original id; idempotency makes the replay safe. }

@@ -250,7 +250,14 @@ nodes:
     security: [De-identification before export, Tenant-level opt-out honoured]
 edges:
   - { id: e-spa-gw, source: spa, target: gateway, label: API call, protocol: HTTPS + bearer token, mode: sync }
-  - { id: e-partner-gw, source: partner, target: gateway, label: API call, protocol: HTTPS + client credentials, mode: sync }
+  - {
+      id: e-partner-gw,
+      source: partner,
+      target: gateway,
+      label: API call,
+      protocol: HTTPS + client credentials,
+      mode: sync,
+    }
   - { id: e-spa-idp, source: spa, target: idp, label: Sign in, protocol: OIDC + PKCE, mode: sync }
   - { id: e-gw-api, source: gateway, target: api, label: Forward request, protocol: HTTP (host + token), mode: sync }
   - { id: e-api-redis, source: api, target: redis, label: Get tenant record, protocol: Redis GET, mode: sync }
@@ -262,13 +269,48 @@ edges:
   - { id: e-api-broker, source: api, target: broker, label: Publish job, protocol: AMQP, mode: async }
   - { id: e-broker-workers, source: broker, target: workers, label: Deliver job, protocol: AMQP, mode: async }
   - { id: e-workers-bouncer, source: workers, target: bouncer, label: Tenant writes, protocol: PostgreSQL, mode: sync }
-  - { id: e-workers-catalog, source: workers, target: catalog, label: Register / activate tenant, protocol: SQL, mode: sync }
-  - { id: e-migrator-catalog, source: migrator, target: catalog, label: Wave plan + versions, protocol: SQL, mode: sync }
-  - { id: e-migrator-bouncer, source: migrator, target: bouncer, label: Apply migration, protocol: PostgreSQL (DDL), mode: sync }
-  - { id: e-migrator-redis, source: migrator, target: redis, label: Publish tenant-changed, protocol: Redis PUBLISH, mode: async }
+  - {
+      id: e-workers-catalog,
+      source: workers,
+      target: catalog,
+      label: Register / activate tenant,
+      protocol: SQL,
+      mode: sync,
+    }
+  - {
+      id: e-migrator-catalog,
+      source: migrator,
+      target: catalog,
+      label: Wave plan + versions,
+      protocol: SQL,
+      mode: sync,
+    }
+  - {
+      id: e-migrator-bouncer,
+      source: migrator,
+      target: bouncer,
+      label: Apply migration,
+      protocol: PostgreSQL (DDL),
+      mode: sync,
+    }
+  - {
+      id: e-migrator-redis,
+      source: migrator,
+      target: redis,
+      label: Publish tenant-changed,
+      protocol: Redis PUBLISH,
+      mode: async,
+    }
   - { id: e-redis-api, source: redis, target: api, label: Invalidate cache, protocol: Redis SUBSCRIBE, mode: async }
   - { id: e-api-otel, source: api, target: otel, label: Telemetry, protocol: OTLP, mode: stream }
-  - { id: e-workers-warehouse, source: workers, target: warehouse, label: De-identified export, protocol: Batch, mode: batch }
+  - {
+      id: e-workers-warehouse,
+      source: workers,
+      target: warehouse,
+      label: De-identified export,
+      protocol: Batch,
+      mode: batch,
+    }
 flows:
   - id: tenant-request
     title: A tenant request
@@ -277,27 +319,51 @@ flows:
       - { edge: e-spa-gw, note: The browser calls acme.example.com with a token whose tid claim names the tenant. }
       - { edge: e-gw-api, note: The gateway applies the tenant's rate limit and forwards the request. }
       - { edge: e-api-redis, note: Middleware validates the token and looks up the tenant record in the cache. }
-      - { edge: e-api-catalog, note: On a cache miss the catalogue is queried; host and claim must map to the same tenant. }
-      - { edge: e-api-secrets, note: Credentials for the tenant's database role are fetched (normally served from an in-memory lease). }
-      - { edge: e-api-bouncer, note: The TenantDbContextFactory opens a connection to the tenant's database through PgBouncer. }
+      - {
+          edge: e-api-catalog,
+          note: On a cache miss the catalogue is queried; host and claim must map to the same tenant.,
+        }
+      - {
+          edge: e-api-secrets,
+          note: Credentials for the tenant's database role are fetched (normally served from an in-memory lease).,
+        }
+      - {
+          edge: e-api-bouncer,
+          note: The TenantDbContextFactory opens a connection to the tenant's database through PgBouncer.,
+        }
       - { edge: e-bouncer-a, note: PgBouncer runs the transaction on a pooled server connection on Shard A. }
   - id: migration-wave
     title: A schema-migration wave
     description: Expand migrations roll out tenant by tenant while the application keeps serving N-1 and N schemas.
     steps:
-      - { edge: e-migrator-catalog, note: The orchestrator reads the next wave (canary tenants first) from the catalogue. }
+      - {
+          edge: e-migrator-catalog,
+          note: The orchestrator reads the next wave (canary tenants first) from the catalogue.,
+        }
       - { edge: e-migrator-bouncer, note: It applies the expand migration to one tenant database at a time. }
       - { edge: e-bouncer-b, note: The DDL runs on the tenant's shard; failures are recorded, not retried blindly. }
-      - { edge: e-migrator-catalog, note: The tenant's schema version is updated; the wave halts if failures exceed the threshold. }
+      - {
+          edge: e-migrator-catalog,
+          note: The tenant's schema version is updated; the wave halts if failures exceed the threshold.,
+        }
       - { edge: e-migrator-redis, note: A tenant-changed event is published. }
-      - { edge: e-redis-api, note: API instances drop the cached record and pick up the new schema version on the next request. }
+      - {
+          edge: e-redis-api,
+          note: API instances drop the cached record and pick up the new schema version on the next request.,
+        }
   - id: onboarding
     title: Onboarding a tenant
     description: Provisioning is asynchronous and idempotent, so a retry can never create two databases.
     steps:
       - { edge: e-gw-api, note: An operator requests a new tenant through the admin API. }
-      - { edge: e-api-broker, note: The API validates the request and publishes a provision-tenant job keyed by tenant id. }
+      - {
+          edge: e-api-broker,
+          note: The API validates the request and publishes a provision-tenant job keyed by tenant id.,
+        }
       - { edge: e-broker-workers, note: A worker picks up the job. }
-      - { edge: e-workers-catalog, note: It reserves the tenant record in "provisioning" status and selects a shard by capacity and residency. }
+      - {
+          edge: e-workers-catalog,
+          note: It reserves the tenant record in "provisioning" status and selects a shard by capacity and residency.,
+        }
       - { edge: e-workers-bouncer, note: It creates the database and role, then applies the current schema baseline. }
       - { edge: e-workers-catalog, note: The tenant is marked active; only now will the resolver accept its requests. }

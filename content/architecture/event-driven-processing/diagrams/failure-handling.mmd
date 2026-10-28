@@ -1,0 +1,17 @@
+stateDiagram-v2
+  [*] --> Received
+  Received --> Duplicate: inbox key exists
+  Duplicate --> Acknowledged
+  Received --> Processing: first delivery
+  Processing --> Acknowledged: success (inbox + effect committed)
+  Processing --> Retry1m: transient error
+  Retry1m --> Processing: after 1 min + jitter
+  Retry1m --> Retry10m: fails again
+  Retry10m --> Processing: after 10 min
+  Retry10m --> Retry1h: fails again
+  Retry1h --> Processing: after 1 h
+  Retry1h --> DeadLettered: retries exhausted
+  Processing --> DeadLettered: permanent error
+  DeadLettered --> Replayed: operator fix and re-publish
+  Replayed --> Received
+  Acknowledged --> [*]

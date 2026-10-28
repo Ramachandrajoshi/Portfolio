@@ -1,0 +1,23 @@
+# C4 Level 1 — System Context: Industrial telemetry platform (illustrative reference architecture)
+direction: right
+
+classes: {
+  person: {shape: c4-person}
+  system: {style.border-radius: 8; style.stroke-width: 2}
+  external: {style.stroke-dash: 4; style.border-radius: 8}
+}
+
+operator: Plant operator {class: person}
+engineer: Reliability engineer {class: person}
+equipment: "Plant equipment\n[PLCs, sensors, drives]" {class: external}
+
+platform: "Industrial telemetry platform\n[Software system]\nCollects, stores and analyses\nmachine telemetry; raises alarms" {class: system}
+
+erp: "Maintenance system (CMMS)\n[External]" {class: external}
+notify: "Notification service\n[External: e-mail, SMS, push]" {class: external}
+
+equipment -> platform: Telemetry via edge gateways (OPC UA / Modbus → MQTT)
+operator -> platform: Watches live state, acknowledges alarms
+engineer -> platform: Analyses trends, tunes alarm rules
+platform -> notify: Alarm notifications
+platform -> erp: Creates work orders from alarms (REST)

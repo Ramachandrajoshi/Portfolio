@@ -10,7 +10,8 @@ import type { AdrSummary, ExplorerModel } from './types';
  */
 export function ArchitectureDiagram({ system, title }: { system: string; title?: string }) {
   const model = systemFor(system);
-  if (!model) throw new Error(`<ArchitectureDiagram system="${system}"> — no content/architecture/${system}/system.yaml`);
+  if (!model)
+    throw new Error(`<ArchitectureDiagram system="${system}"> — no content/architecture/${system}/system.yaml`);
   const adrs: AdrSummary[] = adrsFor(system).map((a) => ({
     id: a.id,
     title: a.title,
@@ -26,7 +27,11 @@ export function ArchitectureDiagram({ system, title }: { system: string; title?:
     flows: model.flows,
   };
   return (
-    <section className="not-prose @container my-10 space-y-4" aria-label={`System explorer: ${explorerModel.title}`} data-component="architecture-diagram">
+    <section
+      className="not-prose @container my-10 space-y-4"
+      aria-label={`System explorer: ${explorerModel.title}`}
+      data-component="architecture-diagram"
+    >
       <SystemExplorerIsland model={explorerModel} adrs={adrs} />
       <SystemCatalogue model={explorerModel} adrs={adrs} />
     </section>

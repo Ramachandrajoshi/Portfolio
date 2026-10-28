@@ -1,0 +1,38 @@
+# C4 Level 2 — Containers: Local LLM inference platform (illustrative reference architecture)
+direction: right
+
+classes: {
+  container: {style.border-radius: 8}
+  db: {shape: cylinder}
+  external: {style.stroke-dash: 4; style.border-radius: 8}
+  gpu: {style.border-radius: 8; style.stroke-width: 2}
+}
+
+clients: "Clients" {
+  apps: "Internal applications\n[REST]" {class: external}
+  agents: "Agent runtime\n[tool-calling loops]" {class: container}
+}
+
+gateway: "Inference gateway\n[OpenAI-compatible API]\nAuth, quotas, token rate limits" {class: container}
+router: "Scheduler / router\nAdmission by KV budget,\npriority classes, routing" {class: container}
+
+gpus: "GPU node (2 × 24 GB)" {
+  e0: "Model server · GPU 0\n[continuous batching,\npaged KV cache]" {class: gpu}
+  e1: "Model server · GPU 1\n[replica]" {class: gpu}
+}
+
+registry: "Model registry\n[quantised weights,\nchecksums, eval reports]" {class: db}
+ledger: "Usage ledger\n[tokens per tenant]" {class: db}
+evals: "Evaluation harness\n[task-specific suites]" {class: container}
+metrics: "Metrics & traces\n[TTFT, ITL, KV utilisation]" {class: container}
+
+clients.apps -> gateway: HTTPS
+clients.agents -> gateway: HTTPS (streaming)
+gateway -> router: Admitted requests
+router -> gpus.e0: Generate (stream)
+router -> gpus.e1: Generate (stream)
+gpus.e0 -> registry: Load weights (startup)
+gateway -> ledger: Record usage {style.stroke-dash: 4}
+evals -> gateway: Regression runs
+gpus.e0 -> metrics: Engine metrics {style.stroke-dash: 4}
+router -> metrics: Queue depth, admissions {style.stroke-dash: 4}

@@ -18,6 +18,18 @@ const includeDrafts = process.env.SHOW_DRAFTS === 'true';
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const TAG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/**
+ * Strict ISO date. Velite's s.isodate() alone throws a RangeError on unparseable input (Zod 3
+ * refinements are non-fatal, so its transform still runs); validating the format first turns
+ * that crash into a readable validation error pointing at the file and field.
+ */
+const isoDate = () =>
+  s
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2})?)?$/, 'dates must be ISO 8601, e.g. 2026-10-27')
+    .refine((v) => !Number.isNaN(Date.parse(v)), 'not a real calendar date')
+    .pipe(s.isodate());
+
 const provenance = s.enum(['production-derived', 'sanitized', 'illustrative', 'experimental', 'placeholder']);
 
 /** Slug = file name (articles, projects) or directory name (index.mdx case studies). */
@@ -36,13 +48,16 @@ const articles = defineCollection({
     .object({
       title: s.string().min(8).max(110),
       description: s.string().min(50).max(200),
-      date: s.isodate(),
-      updated: s.isodate().optional(),
+      date: isoDate(),
+      updated: isoDate().optional(),
       tags: s.array(s.string().regex(TAG, 'tags must be kebab-case')).min(1).max(8),
       series: s.string().min(3).optional(),
       seriesOrder: s.number().int().positive().optional(),
       /** Optional cover image path under /public (pre-optimised AVIF/WebP/SVG). */
-      cover: s.string().regex(/^\/.+\.(avif|webp|png|jpe?g|svg)$/).optional(),
+      cover: s
+        .string()
+        .regex(/^\/.+\.(avif|webp|png|jpe?g|svg)$/)
+        .optional(),
       coverAlt: s.string().optional(),
       draft: s.boolean().default(false),
       provenance: provenance.default('illustrative'),
@@ -79,8 +94,8 @@ const caseStudies = defineCollection({
       provenance,
       /** "complete" = all 15 mandatory sections written; "template" = scaffold awaiting content. */
       status: s.enum(['complete', 'in-progress', 'template']),
-      date: s.isodate(),
-      updated: s.isodate().optional(),
+      date: isoDate(),
+      updated: isoDate().optional(),
       tags: s.array(s.string().regex(TAG)).min(1),
       /** One-line problem statement shown on the index card. */
       problem: s.string().min(40),
@@ -121,17 +136,18 @@ const adrs = defineCollection({
   name: 'Adr',
   pattern: 'architecture/*/adrs/*.yaml',
   schema: s.object({
-    id: s.string().regex(/^[A-Z]{2,4}-ADR-\d{3}$/, 'ADR ids look like MT-ADR-001').pipe(s.unique('adr')),
+    id: s
+      .string()
+      .regex(/^[A-Z]{2,4}-ADR-\d{3}$/, 'ADR ids look like MT-ADR-001')
+      .pipe(s.unique('adr')),
     title: s.string().min(8),
     status: s.enum(['proposed', 'accepted', 'superseded', 'deprecated', 'rejected']),
-    date: s.isodate(),
+    date: isoDate(),
     caseStudy: s.string().regex(SLUG),
     supersededBy: s.string().optional(),
     context: s.string().min(40),
     decision: s.string().min(20),
-    alternatives: s
-      .array(s.object({ option: s.string(), summary: s.string(), rejectedBecause: s.string() }))
-      .min(1),
+    alternatives: s.array(s.object({ option: s.string(), summary: s.string(), rejectedBecause: s.string() })).min(1),
     consequences: s.object({ positive: s.array(s.string()).min(1), negative: s.array(s.string()).min(1) }),
     risks: s.array(s.string()).default([]),
     followUps: s.array(s.string()).default([]),
@@ -162,7 +178,13 @@ const systems = defineCollection({
       title: s.string(),
       description: s.string().min(40),
       groups: s
-        .array(s.object({ id: s.string(), label: s.string(), trust: s.enum(['public', 'dmz', 'internal', 'restricted', 'edge']) }))
+        .array(
+          s.object({
+            id: s.string(),
+            label: s.string(),
+            trust: s.enum(['public', 'dmz', 'internal', 'restricted', 'edge']),
+          }),
+        )
         .default([]),
       nodes: s
         .array(
@@ -225,8 +247,10 @@ const systems = defineCollection({
             ctx.addIssue({ code: 'custom', path: ['flows', i, 'steps', j], message: `unknown edge "${step.edge}"` });
         }),
       );
-      if (nodeIds.size !== model.nodes.length) ctx.addIssue({ code: 'custom', path: ['nodes'], message: 'duplicate node id' });
-      if (edgeIds.size !== model.edges.length) ctx.addIssue({ code: 'custom', path: ['edges'], message: 'duplicate edge id' });
+      if (nodeIds.size !== model.nodes.length)
+        ctx.addIssue({ code: 'custom', path: ['nodes'], message: 'duplicate node id' });
+      if (edgeIds.size !== model.edges.length)
+        ctx.addIssue({ code: 'custom', path: ['edges'], message: 'duplicate edge id' });
     }),
 });
 
@@ -241,12 +265,10 @@ const projects = defineCollection({
       technologies: s.array(s.string()).min(1),
       provenance,
       status: s.enum(['active', 'complete', 'archived', 'concept']),
-      date: s.isodate(),
+      date: isoDate(),
       featured: s.boolean().default(false),
       /** Verified public links only. Omit rather than guess. */
-      links: s
-        .object({ source: s.string().url().optional(), demo: s.string().url().optional() })
-        .default({}),
+      links: s.object({ source: s.string().url().optional(), demo: s.string().url().optional() }).default({}),
       relatedCaseStudy: s.string().optional(),
       path: s.path(),
       body: mdxBody,
@@ -256,6 +278,77 @@ const projects = defineCollection({
       return { ...data, slug, url: `/projects/${slug}/` };
     }),
 });
+
+export const collections = { articles, caseStudies, adrs, systems, projects };
+
+export const mdxOptions = {
+  gfm: true,
+  removeComments: true,
+  // Diagram `src` props are ids, not files: assets are handled by scripts/build-diagrams.ts.
+  copyLinkedFiles: false,
+  rehypePlugins: [
+    rehypeSlug,
+    [
+      rehypeAutolinkHeadings,
+      {
+        behavior: 'append',
+        properties: { className: ['heading-anchor'], ariaHidden: true, tabIndex: -1 },
+        content: { type: 'text', value: '#' },
+      },
+    ],
+    [
+      rehypeShiki,
+      {
+        themes: { light: 'github-light-high-contrast', dark: 'github-dark-high-contrast' },
+        defaultColor: false,
+        addLanguageClass: true,
+      },
+    ],
+  ],
+} satisfies Parameters<typeof defineConfig>[0]['mdx'];
+
+type Collections = Record<string, unknown[]> & {
+  articles: { slug: string; draft: boolean }[];
+  caseStudies?: { slug: string }[];
+  adrs?: { id: string; caseStudy: string }[];
+  systems?: { caseStudy: string; nodes: { id: string; adrs: string[] }[] }[];
+  projects?: { slug: string; relatedCaseStudy?: string }[];
+};
+
+/** Draft removal + cross-collection integrity. Returning false fails the build. */
+export function prepareContent(collections: Collections): false | void {
+  collections.caseStudies ??= [];
+  collections.adrs ??= [];
+  collections.systems ??= [];
+  collections.projects ??= [];
+  if (!includeDrafts) {
+    collections.articles = collections.articles.filter((a) => !a.draft);
+  }
+  // Cross-collection integrity checks — return false to fail the build.
+  const caseStudySlugs = new Set(collections.caseStudies!.map((c) => c.slug));
+  const adrIds = new Set(collections.adrs!.map((a) => a.id));
+  const problems: string[] = [];
+  for (const adr of collections.adrs!)
+    if (!caseStudySlugs.has(adr.caseStudy))
+      problems.push(`ADR ${adr.id} references unknown case study "${adr.caseStudy}"`);
+  for (const system of collections.systems!) {
+    if (!caseStudySlugs.has(system.caseStudy))
+      problems.push(`system.yaml references unknown case study "${system.caseStudy}"`);
+    for (const node of system.nodes)
+      for (const id of node.adrs)
+        if (!adrIds.has(id)) problems.push(`${system.caseStudy}: node "${node.id}" references unknown ${id}`);
+  }
+  for (const project of collections.projects!)
+    if (project.relatedCaseStudy && !caseStudySlugs.has(project.relatedCaseStudy))
+      problems.push(`project ${project.slug} references unknown case study "${project.relatedCaseStudy}"`);
+  const slugs = collections.articles.map((a) => a.slug);
+  const dup = slugs.find((slug, i) => slugs.indexOf(slug) !== i);
+  if (dup) problems.push(`duplicate article slug "${dup}"`);
+  if (problems.length) {
+    for (const p of problems) console.error(`✗ content: ${p}`);
+    return false;
+  }
+}
 
 export default defineConfig({
   root: 'content',
@@ -268,55 +361,6 @@ export default defineConfig({
   },
   strict: true,
   collections: { articles, caseStudies, adrs, systems, projects },
-  mdx: {
-    gfm: true,
-    removeComments: true,
-    // Diagram `src` props are ids, not files: assets are handled by scripts/build-diagrams.ts.
-    copyLinkedFiles: false,
-    rehypePlugins: [
-      rehypeSlug,
-      [
-        rehypeAutolinkHeadings,
-        {
-          behavior: 'append',
-          properties: { className: ['heading-anchor'], ariaHidden: true, tabIndex: -1 },
-          content: { type: 'text', value: '#' },
-        },
-      ],
-      [
-        rehypeShiki,
-        {
-          themes: { light: 'github-light', dark: 'github-dark-dimmed' },
-          defaultColor: false,
-          addLanguageClass: true,
-        },
-      ],
-    ],
-  },
-  prepare: (collections) => {
-    if (!includeDrafts) {
-      collections.articles = collections.articles.filter((a) => !a.draft);
-    }
-    // Cross-collection integrity checks — return false to fail the build.
-    const caseStudySlugs = new Set(collections.caseStudies.map((c) => c.slug));
-    const adrIds = new Set(collections.adrs.map((a) => a.id));
-    const problems: string[] = [];
-    for (const adr of collections.adrs)
-      if (!caseStudySlugs.has(adr.caseStudy)) problems.push(`ADR ${adr.id} references unknown case study "${adr.caseStudy}"`);
-    for (const system of collections.systems) {
-      if (!caseStudySlugs.has(system.caseStudy)) problems.push(`system.yaml references unknown case study "${system.caseStudy}"`);
-      for (const node of system.nodes)
-        for (const id of node.adrs) if (!adrIds.has(id)) problems.push(`${system.caseStudy}: node "${node.id}" references unknown ${id}`);
-    }
-    for (const project of collections.projects)
-      if (project.relatedCaseStudy && !caseStudySlugs.has(project.relatedCaseStudy))
-        problems.push(`project ${project.slug} references unknown case study "${project.relatedCaseStudy}"`);
-    const slugs = collections.articles.map((a) => a.slug);
-    const dup = slugs.find((slug, i) => slugs.indexOf(slug) !== i);
-    if (dup) problems.push(`duplicate article slug "${dup}"`);
-    if (problems.length) {
-      for (const p of problems) console.error(`✗ content: ${p}`);
-      return false;
-    }
-  },
+  mdx: mdxOptions,
+  prepare: (data) => prepareContent(data as unknown as Collections),
 });

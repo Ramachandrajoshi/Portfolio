@@ -24,7 +24,11 @@ export function SystemExplorerIsland({ model, adrs }: { model: ExplorerModel; ad
   );
 
   return (
-    <div ref={ref} className="min-h-[26rem] sm:min-h-[34rem]" data-explorer-state={failed ? 'failed' : inView ? 'loading' : 'idle'}>
+    <div
+      ref={ref}
+      className="min-h-[26rem] sm:min-h-[34rem]"
+      data-explorer-state={failed ? 'failed' : inView ? 'loading' : 'idle'}
+    >
       {inView ? (
         <ErrorBoundary fallback={fallback} onError={() => setFailed(true)}>
           <Suspense fallback={fallback}>

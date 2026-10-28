@@ -21,7 +21,7 @@ export function Timeline({ items, title }: { items: TimelineItem[]; title?: stri
             <span
               aria-hidden
               className={
-                'absolute -left-[1.94rem] top-1.5 size-3 rounded-full border-2 ' +
+                'absolute top-1.5 -left-[1.94rem] size-3 rounded-full border-2 ' +
                 (item.status === 'planned'
                   ? 'border-border-strong bg-bg'
                   : item.status === 'current'
@@ -29,10 +29,12 @@ export function Timeline({ items, title }: { items: TimelineItem[]; title?: stri
                     : 'border-accent bg-accent/40')
               }
             />
-            <p className="font-mono text-xs uppercase tracking-wider text-accent">{item.label}</p>
+            <p className="font-mono text-xs tracking-wider text-accent uppercase">{item.label}</p>
             <p className="mt-0.5 font-semibold">
               {item.title}
-              {item.status ? <span className="ml-2 text-xs font-normal text-muted">({statusText[item.status]})</span> : null}
+              {item.status ? (
+                <span className="ml-2 text-xs font-normal text-muted">({statusText[item.status]})</span>
+              ) : null}
             </p>
             {item.description ? <div className="mt-1 text-[0.95rem] text-muted">{item.description}</div> : null}
           </li>
