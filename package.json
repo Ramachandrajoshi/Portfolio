@@ -83,7 +83,7 @@
     "shiki": "^4.5.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
-    "typescript": "~5.9.3",
+    "typescript": "~6.0.3",
     "unist-util-visit": "^5.2.0",
     "velite": "0.4.0",
     "vitest": "^4.1.12"
